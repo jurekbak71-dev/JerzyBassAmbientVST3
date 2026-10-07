@@ -71,3 +71,6 @@ g++ -std=c++17 -O2 -I Source tests/CoreTests.cpp -o bass-ambient-tests
 
 Przed dystrybucją trzeba dobrać odpowiednią licencję JUCE i wykonać odsłuchy oraz testy
 GUI, skalowania, automatyki, zapisu projektu i obciążenia w rzeczywistym FL Studio.
+
+
+JerzyVSTGuiKit CI validation.
