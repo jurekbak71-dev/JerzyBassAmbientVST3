@@ -3,37 +3,11 @@
 namespace {
 const juce::Colour background(0xff15252a),panel(0xff102f2f),accent(0xff58a6a6),text(0xffefe2c4),muted(0xff96a9a4);
 }
-class BassAmbientEditor::Theme final : public juce::LookAndFeel_V4 {
+class BassAmbientEditor::Theme final : public JerzyAudioUI::HardwareLookAndFeel {
 public:
-    Theme() {
-        setColour(juce::Slider::textBoxTextColourId,text);
-        setColour(juce::Slider::textBoxBackgroundColourId,background);
-        setColour(juce::Slider::textBoxOutlineColourId,juce::Colours::transparentBlack);
-        setColour(juce::ComboBox::backgroundColourId,background);
-        setColour(juce::ComboBox::textColourId,text);
-        setColour(juce::ComboBox::outlineColourId,muted.withAlpha(.4f));
-        setColour(juce::PopupMenu::backgroundColourId,panel);
-        setColour(juce::PopupMenu::textColourId,text);
-        setColour(juce::TextButton::buttonColourId,panel);
-        setColour(juce::TextButton::buttonOnColourId,accent.withAlpha(.25f));
-        setColour(juce::TextButton::textColourOffId,text);
-        setColour(juce::TextButton::textColourOnId,accent);
-        setColour(juce::ToggleButton::textColourId,text);
-        setColour(juce::ToggleButton::tickColourId,accent);
+    Theme() : JerzyAudioUI::HardwareLookAndFeel(JerzyAudioUI::petrol()) {
         setColour(juce::Label::textColourId,text);
-    }
-    void drawRotarySlider(juce::Graphics& g,int x,int y,int w,int h,float value,float start,float end,juce::Slider&) override {
-        auto bounds=juce::Rectangle<float>(float(x),float(y),float(w),float(h)).reduced(8);
-        float size=std::min(bounds.getWidth(),bounds.getHeight()),radius=size*.5f;
-        auto centre=bounds.getCentre();auto dial=juce::Rectangle<float>(size,size).withCentre(centre);
-        g.setColour(background);g.fillEllipse(dial.reduced(4));
-        juce::Path track;track.addCentredArc(centre.x,centre.y,radius,radius,0,start,end,true);
-        g.setColour(muted.withAlpha(.25f));g.strokePath(track,juce::PathStrokeType(3));
-        juce::Path active;float angle=start+value*(end-start);
-        active.addCentredArc(centre.x,centre.y,radius,radius,0,start,angle,true);
-        g.setColour(accent);g.strokePath(active,juce::PathStrokeType(3));
-        juce::Path pointer;pointer.startNewSubPath(0,-radius*.35f);pointer.lineTo(0,-radius*.72f);
-        g.strokePath(pointer,juce::PathStrokeType(3),juce::AffineTransform::rotation(angle).translated(centre.x,centre.y));
+        setColour(juce::PopupMenu::textColourId,text);
     }
 };
 
