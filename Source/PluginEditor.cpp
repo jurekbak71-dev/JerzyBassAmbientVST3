@@ -46,7 +46,7 @@ public:
         }
     }
     void paint(juce::Graphics& g) override {
-        g.setColour(panel);g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(3),8);
+        JerzyAudioUI::paintPanel(g,getLocalBounds().toFloat().reduced(3),JerzyAudioUI::petrol(),8);
     }
     void resized() override {
         auto bounds=getLocalBounds().reduced(10);label.setBounds(bounds.removeFromTop(30));
@@ -213,7 +213,8 @@ void BassAmbientEditor::selectPage(int index) {
     viewport.setViewedComponent(&currentPage(),false);resized();viewport.setViewPosition(0,0);
 }
 void BassAmbientEditor::paint(juce::Graphics& g) {
-    g.fillAll(background);g.setColour(text);g.setFont(juce::Font(juce::FontOptions(22).withStyle("Bold")));
+    JerzyAudioUI::paintChassis(g,getLocalBounds().toFloat(),JerzyAudioUI::petrol());
+    g.setColour(text);g.setFont(juce::Font(juce::FontOptions(22).withStyle("Bold")));
     g.drawText("JERZY  /  BASS AMBIENT",20,12,330,35,juce::Justification::centredLeft);
     g.setColour(muted);g.setFont(juce::Font(juce::FontOptions(12)));
     g.drawText("0.2.0  |  PIANO ROLL ROOT  |  HOST SYNC",22,47,340,20,juce::Justification::centredLeft);
