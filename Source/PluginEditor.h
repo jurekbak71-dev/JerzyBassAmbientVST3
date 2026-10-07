@@ -1,5 +1,6 @@
 #pragma once
-#include "PluginProcessor.h"\n#include "JerzyVSTGuiKit.h"
+#include "PluginProcessor.h"
+#include "JerzyVSTGuiKit.h"
 
 class BassAmbientEditor final : public juce::AudioProcessorEditor,private juce::Timer {
 public:
