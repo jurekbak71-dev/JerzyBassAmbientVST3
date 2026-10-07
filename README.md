@@ -74,3 +74,5 @@ GUI, skalowania, automatyki, zapisu projektu i obciążenia w rzeczywistym FL St
 
 
 <!-- Jerzy VST GUI System CI validation -->
+
+<!-- Jerzy GUI validation pass 2 -->
