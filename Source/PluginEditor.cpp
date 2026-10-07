@@ -1,7 +1,7 @@
 #include "PluginEditor.h"
 
 namespace {
-const juce::Colour background(0xff10141b),panel(0xff1c2430),accent(0xff5edbc1),text(0xffe6ecf4),muted(0xff96a9bc);
+const juce::Colour background(0xff15252a),panel(0xff102f2f),accent(0xff58a6a6),text(0xffefe2c4),muted(0xff96a9a4);
 }
 class BassAmbientEditor::Theme final : public juce::LookAndFeel_V4 {
 public:
