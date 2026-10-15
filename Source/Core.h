@@ -27,7 +27,7 @@ struct FXParameters {
 };
 
 struct Parameters : FXParameters {
-    bool bass=true, pad=false, direct=false, latch=false, restart=false, evolve=false, legato=false;
+    bool bass=true, pad=false, direct=false, latch=false, restart=false, evolve=false, legato=false, midiOut=false;
     int model=0, bassWave=0, style=0, scale=1, division=2, bars=1, meter=0, numerator=4, denominator=4;
     int seed=71, chord=1, padMode=1, engine1=0, engine2=1;
     double density=.75, movement=.4, gate=.55, swing=0, variation=.15, slide=.3, accent=.5;
@@ -367,6 +367,8 @@ class Instrument {
     bool wasPlaying=false,havePosition=false,previousSlide=false,previousBass=true,previousPad=false,previousDirect=false;
     int64_t lastStep=std::numeric_limits<int64_t>::min(); double gateUntil=-1;
     uint32_t voiceSerial=0;
+    int generatedNote=-1; float generatedVelocity=0.8f;
+    double dcCoefficient=0.999;
     BassVoice bass;
     std::array<PadVoice,12> pads;
     FXRack bassRack,padRack,masterRack;
@@ -398,6 +400,7 @@ class Instrument {
             bool overlapping=root>=0;
             root=nextRoot;rootChannel=channel;
             velocity=latest?latest->velocity:velocity;
+            generatedNote=-1;
             if(root>=0) {
                 if(p.restart) { anchor=ppq;lastStep=std::numeric_limits<int64_t>::min(); }
                 if(p.direct) bass.note(root,velocity,p.legato&&overlapping,false);
@@ -407,8 +410,9 @@ class Instrument {
         } else if(latest) velocity=latest->velocity;
     }
 public:
-    void prepare(double sr) { rate=sr;bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);reset(); }
+    void prepare(double sr) { rate=sr;dcCoefficient=std::exp(-2*pi*5/rate);bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);reset(); }
     void reset() {
+        generatedNote=-1; generatedVelocity=0.8f;
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
         for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.age=0; }
         bassRack.reset();padRack.reset();masterRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
@@ -416,8 +420,10 @@ public:
         previousBass=true;previousPad=false;previousDirect=false;
     }
     int currentRoot() const {return root;}
+    int generatedMidiNote() const {return generatedNote;}
+    float generatedMidiVelocity() const {return generatedVelocity;}
     int64_t stepPosition() const { return lastStep; }
-    void allOff() { held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
+    void allOff() { generatedNote=-1; held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
     void noteOn(int note,int channel,double v,const Parameters& p,double ppq) {
         if(note<0||note>127||channel<1||channel>16) return;
         if(v<=0) { noteOff(note,channel,p,ppq);return; }
@@ -455,7 +461,8 @@ public:
     Stereo next(const Parameters& p,double ppq,int hostNumerator=4,int hostDenominator=4) {
         const double period=divisionBeats(p.division);
         if(previousPad&&!p.pad) for(auto& v:pads) v.off();
-        if(previousBass&&!p.bass) bass.off();
+        if(previousBass&&!p.bass) { bass.off();generatedNote=-1; }
+        if(p.direct) generatedNote=-1;
         if(root>=0&&((!previousBass&&p.bass)||(previousDirect!=p.direct))) {
             bass.note(root,velocity,false,false);lastStep=std::numeric_limits<int64_t>::min();
         }
@@ -470,12 +477,14 @@ public:
                 int count=std::max(1,int(std::lround(double(num)*4/std::max(1,den)*p.bars/period)));
                 auto s=makeStep(p,step,count);
                 if(!s.rest) {
-                    bass.note(root+scaleOffset(s.degree,p.scale)+12*s.octave,velocity*s.velocity,previousSlide,s.accent);
+                    const int note=clamp(root+scaleOffset(s.degree,p.scale)+12*s.octave,0,127);
+                    bass.note(note,velocity*s.velocity,previousSlide,s.accent);
+                    generatedNote=note;generatedVelocity=(float)clamp(velocity*s.velocity,0.01,1.0);
                     gateUntil=ppq+period*s.length;previousSlide=s.slide;
-                } else { bass.off();previousSlide=false;gateUntil=-1; }
+                } else { bass.off();generatedNote=-1;previousSlide=false;gateUntil=-1; }
                 lastStep=step;
             }
-            if(gateUntil>=0&&ppq>=gateUntil&&!previousSlide) { bass.off();gateUntil=-1; }
+            if(gateUntil>=0&&ppq>=gateUntil&&!previousSlide) { bass.off();generatedNote=-1;gateUntil=-1; }
         }
         if(root>=0&&p.pad) {
             bool active=false;for(auto& v:pads) if(v.env.active()&&!v.releasing) active=true;
@@ -510,7 +519,6 @@ public:
         // Master is after the layer sum, before output level / peak guard.
         auto processedMaster=masterRack.process(out,p.masterRack,bpm);
         out=(out*(1-p.masterFX)+processedMaster*p.masterFX)*p.master;
-        const double dcCoefficient=std::exp(-2*pi*5/rate);
         double l=out.l-dcInL+dcCoefficient*dcOutL,r=out.r-dcInR+dcCoefficient*dcOutR;
         dcInL=out.l;dcInR=out.r;dcOutL=l;dcOutR=r;
         if(!std::isfinite(l)||!std::isfinite(r)) { dcInL=dcInR=dcOutL=dcOutR=0;return {}; }
