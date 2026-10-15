@@ -30,6 +30,20 @@ struct Parameters : FXParameters {
     bool bass=true, pad=false, direct=false, latch=false, restart=false, evolve=false, legato=false;
     int model=0, bassWave=0, style=0, scale=1, division=2, bars=1, meter=0, numerator=4, denominator=4;
     int seed=71, chord=1, padMode=1, engine1=0, engine2=1;
+    int mutation=0,sceneSelect=0,source=0,styleFamily=0;
+    int substyle=0, articulation=0, fillBars=4, phraseSeed=71, rhythmSeed=71, timbreSeed=71;
+    bool lockNotes=false, lockRhythm=false, lockTimbre=false, lockFX=false;
+    double syncopation=.25, humanize=.15, guitarTone=.55, guitarMute=.25, interaction=0;
+    bool backgroundOn=true, rhythmOn=false, eventsOn=false, krellSync=false;
+    int rhythmSound=0, rhythmPattern=0, rhythmDivision=1;
+    double backgroundLevel=1, rhythmLevel=.55, eventsLevel=.45, rhythmDensity=.7, rhythmGate=.5;
+    double rhythmSwing=0, strum=.018, krellRate=2, krellRange=1, krellIndependence=.7;
+    double krellAttack=.4, krellRelease=1.5, krellFM=.4, harmonic=.95;
+    double evolutionDepth=.45, artifactRate=.2, artifactDepth=.15;
+    int evolutionBars=16;
+    bool previewBass=false, previewPad=false;
+    int previewNote=36;
+    double previewTempo=120;
     double density=.75, movement=.4, gate=.55, swing=0, variation=.15, slide=.3, accent=.5;
     double bassLevel=.6, cutoff=1200, resonance=.35, filterEnv=.65, drive=.2;
     double bassAttack=.003, bassDecay=.25, bassSustain=.25, bassRelease=.1, glide=.09, sub=.3, pulse=.5;
@@ -41,11 +55,20 @@ struct Parameters : FXParameters {
 
 };
 
+// Memoise only exactly equal inputs; no control-rate decimation or DSP approximation.
+struct ExactCache {
+    double key=std::numeric_limits<double>::quiet_NaN(), value=0;
+    template<class Function> double get(double input,Function calculate) {
+        if(input!=key) {key=input;value=calculate();}return value;
+    }
+};
+
 class Envelope {
     enum Stage { Off, Attack, Decay, Sustain, Release } stage=Off;
     double value=0, rate=48000, releaseStart=0, elapsed=0;
+    ExactCache attackCoefficient;
 public:
-    void prepare(double sr) { rate=sr; reset(); }
+    void prepare(double sr) { rate=sr;attackCoefficient={};reset(); }
     void reset() { stage=Off; value=elapsed=0; }
     void on() { stage=Attack; elapsed=0; }
     void off() { if (stage!=Off && stage!=Release) { stage=Release; releaseStart=value; elapsed=0; } }
@@ -54,7 +77,7 @@ public:
         const double dt=1.0/rate; elapsed+=dt;
         switch(stage) {
         case Off: value=0; break;
-        case Attack: value += (1.0-value)*(1.0-std::exp(-6.0*dt/std::max(a,.0002))); if(elapsed>=a) { value=1; stage=Decay; elapsed=0; } break;
+        case Attack: value += (1.0-value)*attackCoefficient.get(a,[&]{return 1.0-std::exp(-6.0*dt/std::max(a,.0002));}); if(elapsed>=a) { value=1; stage=Decay; elapsed=0; } break;
         case Decay: value=s+(1-s)*std::exp(-5.0*elapsed/std::max(d,.001)); if(elapsed>=d) { value=s; stage=Sustain; } break;
         case Sustain: value=s; break;
         case Release: value=releaseStart*std::exp(-7.0*elapsed/std::max(r,.001)); if(elapsed>=r) { stage=Off; value=0; } break;
@@ -84,8 +107,10 @@ struct Oscillator {
 // Nonlinear four-stage feedback ladder, run at 2x voice rate.
 struct Ladder {
     std::array<double,4> z{};
+    double coefficientRate=0;ExactCache coefficient;
     double process(double x,double cutoff,double resonance,double sr,double saturation) {
-        double g=1-std::exp(-2*pi*clamp(cutoff,20.0,sr*.18)/sr);
+        if(sr!=coefficientRate) {coefficientRate=sr;coefficient={};}
+        double g=coefficient.get(cutoff,[&]{return 1-std::exp(-2*pi*clamp(cutoff,20.0,sr*.18)/sr);});
         x=std::tanh(x*(1+saturation*3)-clamp(resonance,0.0,.96)*3.7*z[3]);
         for(auto& s:z) { s+=g*(std::tanh(x)-std::tanh(s)); x=s; }
         return z[3]*(1+resonance*.35);
@@ -121,16 +146,51 @@ inline Step makeStep(const Parameters& p,int64_t index,int count) {
         {1,.65,.8,.4,.85,.7,.5,.9,.8,.5,.9,.7,.5,.85,.6,.8},
         {1,.15,.45,.9,.2,.65,.95,.3,.7,.2,.85,.4,.15,.9,.3,.75},
         {1,.2,.7,.2,1,.3,.65,.2,1,.2,.7,.2,1,.3,.7,.4}};
-    int style=clamp(p.style,0,4);
+    int chosenStyle=p.styleFamily>0?4+p.styleFamily:p.style;
+    int style=clamp(chosenStyle,0,4);
+    uint32_t noteSalt=uint32_t(p.lockNotes?p.phraseSeed:p.seed)^hash(p.lockNotes?0:cycle);
+    uint32_t rhythmSalt=uint32_t(p.lockRhythm?p.rhythmSeed:p.seed)^hash(p.lockRhythm?0:cycle);
+    if(p.mutation>0&&unit(uint32_t(p.seed),uint32_t(k)*47+90)<p.variation) {
+        if(!p.lockNotes) noteSalt^=hash(uint32_t(p.mutation));
+        if(!p.lockRhythm) rhythmSalt^=hash(uint32_t(p.mutation));
+    }
+    salt=noteSalt;
     Step s; s.degree=unit(salt,k*11+1)<p.movement?motifs[style][m]:0;
     s.octave=(style==0 && m%4==2)?1:0;
     if(unit(salt,k*11+2)<p.variation*p.movement) s.degree=int(unit(salt,k*11+3)*7);
-    s.rest=unit(salt,k*11+4)>clamp(p.density*weights[style][m]*1.3,0.0,1.0);
+    s.rest=unit(rhythmSalt,k*11+4)>clamp(p.density*weights[style][m]*1.3,0.0,1.0);
     if(k==0 && p.density>0) s.rest=false;
-    s.accent=unit(salt,k*11+5)<p.accent*(m%4==0?1.0:.65);
-    s.slide=unit(salt,k*11+6)<p.slide && !s.rest;
-    s.velocity=s.accent?1.0:(style==3?.45+.4*unit(salt,k*11+7):.75);
+    s.accent=unit(rhythmSalt,k*11+5)<p.accent*(m%4==0?1.0:.65);
+    s.slide=unit(rhythmSalt,k*11+6)<p.slide && !s.rest;
+    s.velocity=s.accent?1.0:(style==3?.45+.4*unit(rhythmSalt,k*11+7):.75);
     s.length=clamp(p.gate*(style==3?.65:1.0),.03,1.0);
+    // Substyles transform the motif, accent grid and articulation independently of the sound.
+    const int variant=clamp(p.substyle,0,2);
+    const bool response=k>=count/2, ending=k>=count-std::max(2,count/8);
+    const bool fill=p.evolve&&p.fillBars>0 && ((index/count+1)%p.fillBars==0);
+    if(chosenStyle>=5) {
+        static constexpr int rock[3][8]={{0,0,0,0,4,4,0,0},{0,0,0,2,0,0,4,3},{0,2,4,2,0,6,4,2}};
+        static constexpr int post[3][8]={{0,0,0,0,0,0,0,0},{0,2,4,6,4,2,0,-1},{0,0,4,3,0,6,4,2}};
+        s.degree=(chosenStyle==5?rock[variant][k%8]:chosenStyle==6?post[variant][k%8]:0);
+        if(unit(noteSalt,k*13+40)>p.movement) s.degree=0;
+        double weight=chosenStyle==7?(k%8==0?1.0:.18+.5*variant):(k%2==0?1.0:.15+.22*variant);
+        s.rest=unit(rhythmSalt,k*13+41)>p.density*weight*1.3;
+        s.octave=(chosenStyle==6&&variant==1&&k%8==4)?1:0;
+        s.velocity=k%4==0?1.0:.7;
+        s.slide=unit(rhythmSalt,k*13+42)<p.slide*(chosenStyle==7?1:.25);
+        s.length=p.gate*(chosenStyle==7?1.0:variant==1?.65:.85);
+    } else if(variant>0) {
+        if(variant==1&&response&&unit(noteSalt,k*17+49)<p.movement) s.degree+=2;
+        if(variant==2) {
+            s.octave=(k%4==2)?1:s.octave;
+            if(k%4==1&&unit(rhythmSalt,k*17+50)<p.density) s.rest=false;
+        }
+    }
+    if(p.syncopation>0&&k%4==3&&unit(rhythmSalt,k*19+52)<p.syncopation*p.density) s.rest=false;
+    if(!p.lockNotes&&!p.lockRhythm&&ending&&fill&&unit(noteSalt,k*23+51)<p.variation) { s.degree= (k%3==0? -1:2+k%4); s.rest=false; }
+    s.velocity*=1-p.humanize*.3*unit(rhythmSalt,k*29+5);
+    s.length=clamp(s.length*(1-p.humanize*.2*unit(rhythmSalt,k*29+6)),.03,1.0);
+    if(k==0&&p.density>0) s.rest=false;
     return s;
 }
 
@@ -138,25 +198,59 @@ class BassVoice {
     double rate=48000, pitch=36,target=36, elapsed=0, filterLevel=0, velocity=.8;
     bool connected=false, accented=false;
     Oscillator o1,o2,subOsc; Ladder filter; Envelope env;
+    std::array<double,20> stringPhase{},brightness{};
+    double lastTone=-1,lastVelocity=-1;
+    ExactCache glideCoefficient,filterDecay;
+    struct Partial {double stiffness, finger, pick;};
+    static const std::array<Partial,20>& partials() {
+        static const auto table=[] {std::array<Partial,20> result{};
+            for(size_t i=0;i<result.size();++i) {double h=double(i+1);result[i]={std::sqrt(1+.000025*h*h),std::sin(pi*h*.28),std::sin(pi*h*.14)};}
+            return result;}();return table;
+    }
 public:
-    void prepare(double sr) { rate=sr; env.prepare(sr); reset(); }
+    void prepare(double sr) { rate=sr;env.prepare(sr);glideCoefficient={};filterDecay={};reset(); }
     void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false; }
     void note(int n,double v,bool legato,bool accent) {
         target=clamp(double(n),12.0,108.0);velocity=v;accented=accent;
-        if(!legato || !env.active()) { pitch=target;env.on();filterLevel=1;elapsed=0; }
+        if(!legato || !env.active()) { pitch=target;env.on();filterLevel=1;elapsed=0;stringPhase.fill(0); }
         connected=legato;
     }
     void off() { env.off();connected=false; }
     double next(const Parameters& p,double bend) {
         if(!env.active()) return 0;
+        int model=p.source==1?3:p.model;
         double amp=env.next(p.bassAttack,p.bassDecay,p.bassSustain,p.bassRelease);
         double glideTime=connected?p.glide:.001;
-        pitch+=(target-pitch)*(1-std::exp(-1/(rate*std::max(glideTime,.001))));
-        filterLevel*=std::exp(-1/(rate*std::max(.025,p.bassDecay*(accented?1.4:1))));
+        pitch+=(target-pitch)*glideCoefficient.get(glideTime,[&]{return 1-std::exp(-1/(rate*std::max(glideTime,.001)));});
+        const double decayTime=std::max(.025,p.bassDecay*(accented?1.4:1));
+        filterLevel*=filterDecay.get(decayTime,[&]{return std::exp(-1/(rate*decayTime));});
+        const double f=hz(pitch+bend);
+        if(model==3&&(p.guitarTone!=lastTone||velocity!=lastVelocity)) {
+            for(size_t h=0;h<brightness.size();++h) brightness[h]=std::pow(double(h+1),-(1.9-p.guitarTone*.85-velocity*.2));
+            lastTone=p.guitarTone;lastVelocity=velocity;
+        }
         double result=0;
         for(int i=0;i<2;++i) {
-            const double f=hz(pitch+bend);
-            if(p.model==1) {
+            if(model==3) {
+                // Dispersive modal string: finger/pick/muted excitation and velocity-dependent damping.
+                double string=0;
+                const auto& table=partials();
+                const double damping=.4+p.guitarMute*7+(p.articulation==2?9:0);
+                const double attack=1-std::exp(-elapsed/(p.articulation==1?.0005:.003));
+                for(size_t h=0;h<stringPhase.size();++h) {
+                    double harmonicNumber=double(h+1);
+                    double stiffness=table[h].stiffness;
+                    if(f*harmonicNumber*stiffness>rate*.9)continue;
+                    stringPhase[h]+=f*harmonicNumber*stiffness/(rate*2);
+                    stringPhase[h]-=std::floor(stringPhase[h]);
+                    double excitation=p.articulation==1?table[h].pick:table[h].finger;
+                    double fall=std::exp(-elapsed*damping*(1+harmonicNumber*.12));
+                    string+=std::sin(2*pi*stringPhase[h])*excitation*brightness[h]*fall*attack;
+                }
+                double scrape=std::sin(elapsed*21341)*std::sin(elapsed*17321)*std::exp(-elapsed/.007);
+                double x=string+scrape*(p.articulation==1?.1:.025)*velocity;
+                result+=filter.process(x,p.cutoff*(1+p.guitarTone*3),p.resonance*.4,rate*2,p.drive);
+            } else if(model==1) {
                 const double sweep=24*std::exp(-elapsed/.012);
                 double body=o1.next(hz(pitch+bend+sweep),rate*2,2);
                 double click=std::sin(2*pi*1800*elapsed)*std::exp(-elapsed/.0025)*.22;
@@ -165,7 +259,7 @@ public:
                 result+=filter.process(x,fc,p.resonance,rate*2,p.drive*.3);
             } else {
                 double x=o1.next(f,rate*2,p.bassWave,p.pulse);
-                if(p.model==2) x=.6*x+.4*o2.next(f*1.003,rate*2,1-p.bassWave,p.pulse);
+                if(model==2) x=.6*x+.4*o2.next(f*1.003,rate*2,1-p.bassWave,p.pulse);
                 x=x*.7+subOsc.next(f*.5,rate*2,2)*p.sub*.45;
                 double fc=p.cutoff*std::exp2(filterLevel*p.filterEnv*(accented?5.5:4));
                 result+=filter.process(x,fc,p.resonance,rate*2,p.drive);
@@ -180,6 +274,9 @@ struct PadVoice {
     Oscillator a,b; Ladder fl,fr; Envelope env;
     double note=60, pan=0, age=0, lifetime=4, velocity=1; bool releasing=false;
     uint32_t identity=0;
+    bool krell=false;
+    double secondInterval=0, secondLength=1, attackScale=1, releaseScale=1;
+    double fmDepth=0, cutoffScale=1, blendOffset=0;
     void prepare(double sr) { env.prepare(sr);fl.reset();fr.reset();age=0;releasing=false; }
     void start(double n,double position,uint32_t id,double v=1) { note=n;pan=position;identity=id;age=0;releasing=false;velocity=v;env.on(); }
     void off() { env.off(); releasing=true; }
@@ -188,30 +285,73 @@ struct PadVoice {
         if(mode==1) return o.next(f,sr,1,.5+.2*motion);
         double t=o.phase; o.phase+=clamp(f/sr,0.0,.3);o.phase-=std::floor(o.phase);
         if(mode==2) return .6*std::sin(2*pi*t)+.25*std::sin(4*pi*t+motion*2)+.15*std::sin(6*pi*t-motion);
-        if(mode==3) return std::sin(2*pi*t+(1.5+motion)*std::sin(4*pi*t));
+        if(mode==3) return std::sin(2*pi*t+(1.5+motion+fmDepth)*std::sin(4*pi*t));
         // Procedural granular-style spectral oscillator, not sample playback.
         double window=.55+.45*std::cos(2*pi*age/std::max(.025,grain));
         return window*(.7*std::sin(2*pi*t)+.3*std::sin(2*pi*t*3+motion));
     }
     Stereo next(const Parameters& p,double sr,double bend) {
         if(!env.active()) return {};
-        double amp=env.next(p.padAttack,p.padDecay,p.padSustain,p.padRelease);
+        double amp=env.next(krell?p.krellAttack*attackScale:p.padAttack,
+            krell?lifetime*.3:p.padDecay,krell?.65:p.padSustain,krell?p.krellRelease*releaseScale:p.padRelease);
         age+=1/sr;
         double period=std::max(.5,p.evolution), pos=age/period;
         uint32_t segment=uint32_t(std::floor(pos));
         double random=smooth(unit(identity,segment)*2-1,unit(identity,segment+1)*2-1,pos-segment);
-        double modulation=p.motion*(.5*random+.5*std::sin(age*.37+pan*3));
+        double longWave=std::sin(2*pi*age/std::max(4.0,p.evolutionBars*2.0)+pan);
+        double modulation=p.motion*(.5*random+.5*std::sin(age*.37+pan*3))+p.evolutionDepth*.3*longWave;
         double cents=p.padDrift*(random*7+std::sin(age*.17+pan)*3);
         double x=0;
+        const double f1=hz(note+bend+cents/100),f2=hz(note+secondInterval+bend-cents/120+.045);
+        const double mixAmount=clamp(p.padBlend+blendOffset+modulation*.2,0.0,1.0);
+        const double secondEnv=krell?std::pow(std::max(0.0,std::sin(pi*clamp(age/std::max(.02,secondLength),0.0,1.0))),.7):1;
+        const double cutoff=p.padCutoff*cutoffScale*std::exp2(modulation*2);
         for(int i=0;i<2;++i) {
-            double x1=engine(a,p.engine1,hz(note+bend+cents/100),sr*2,modulation,p.padRack.grainSize);
-            double x2=engine(b,p.engine2,hz(note+bend-cents/120+.045),sr*2,-modulation,p.padRack.grainSize);
-            double mix=x1*(1-p.padBlend)+x2*p.padBlend;
-            x+=fl.process(mix,p.padCutoff*std::exp2(modulation*2),.12,sr*2,.12);
+            double x1=engine(a,p.engine1,f1,sr*2,modulation,p.padRack.grainSize);
+            double x2=engine(b,p.engine2,f2,sr*2,-modulation,p.padRack.grainSize);
+            double mix=x1*(1-mixAmount)+x2*mixAmount*secondEnv;
+            x+=fl.process(mix,cutoff,.12,sr*2,.12);
         }
         double position=clamp(pan*p.spread+modulation*.12,-1.0,1.0);
         double angle=(position+1)*pi*.25;
         return {x*.5*amp*.19*velocity*std::cos(angle),x*.5*amp*.19*velocity*std::sin(angle)};
+    }
+};
+
+
+// Short struck voices use decaying partials rather than an acoustic-piano sample library.
+struct StruckVoice {
+    std::array<double,12> phases{};
+    bool active=false; double note=60,age=0,velocity=.8,pan=0,duration=.3,wait=0;
+    int sound=0;
+    static const std::array<std::array<double,12>,2>& weights() {
+        static const auto table=[] {std::array<std::array<double,12>,2> result{};
+            for(size_t k=0;k<12;++k) {result[0][k]=std::pow(double(k+1),-1.25);result[1][k]=std::pow(double(k+1),-1.8);}
+            return result;}();return table;
+    }
+    void start(double n,double v,double position,double length,int type,double delay) {
+        note=n;velocity=v;pan=position;duration=length;sound=type;wait=delay;age=0;phases.fill(0);active=true;
+    }
+    Stereo next(double sr,double bend) {
+        if(!active) return {};
+        if(wait>0) {wait-=1/sr;return {};}
+        age+=1/sr;
+        const double release=std::exp(-std::max(0.0,age-duration)/(sound==2?.04:.18));
+        if(release<.0001) {active=false;return {};}
+        double result=0;const double fundamental=hz(note+bend);
+        const auto& weightTable=weights()[sound==0?0:1];
+        for(size_t k=0;k<phases.size();++k) {
+            double h=double(k+1),ratio=h;
+            if(sound==3) ratio=h*(1+.08*h);
+            phases[k]+=fundamental*ratio/sr;phases[k]-=std::floor(phases[k]);
+            double decay=std::exp(-age*(1+h*(sound==0?.7:.3)));
+            double partial=std::sin(2*pi*phases[k]);
+            if(sound==1&&k==0) partial=std::sin(2*pi*phases[k]+3*std::exp(-age*8)*std::sin(4*pi*phases[k]));
+            double weight=weightTable[k];
+            result+=partial*weight*decay;
+        }
+        result*=velocity*(1-std::exp(-age/.0015))*release*.13;
+        double a=(pan+1)*pi*.25;return {result*std::cos(a),result*std::sin(a)};
     }
 };
 
@@ -220,7 +360,7 @@ class DelayLine {
 public:
     void prepare(size_t size) { data.assign(std::max(size,size_t(8)),0);cursor=0; }
     void clear() { std::fill(data.begin(),data.end(),0);cursor=0; }
-    void push(double x) { data[cursor]=x;cursor=(cursor+1)%data.size(); }
+    void push(double x) { data[cursor]=x;if(++cursor==data.size())cursor=0; }
     double read(double delay) const {
         if(data.empty()) return 0;
         delay=clamp(delay,1.0,double(data.size()-2));
@@ -229,7 +369,7 @@ public:
         // Floating-point wrap can round a tiny negative position to exactly size.
         if(position>=double(data.size())) position=0;
         size_t a=size_t(position);double frac=position-double(a);
-        return data[a]*(1-frac)+data[(a+1)%data.size()]*frac;
+        return data[a]*(1-frac)+data[a+1==data.size()?0:a+1]*frac;
     }
 };
 
@@ -240,18 +380,29 @@ class FXRack {
     std::array<double,8> damp{};
     std::array<double,4> grainPhase{{0,.25,.5,.75}};
     double grainAvailable=0;
+    ExactCache attackCoefficient,releaseCoefficient,toneCoefficient,pitchRatio,saturationRoot;
+    std::array<int,6> lastOrder{{-1,-1,-1,-1,-1,-1}},validOrder{};
+    void updateOrder(const std::array<int,6>& order) {
+        if(order==lastOrder)return;
+        lastOrder=order;std::array<bool,6> used{};int n=0;
+        for(int id:order)if(id>=0&&id<6&&!used[size_t(id)]) {used[size_t(id)]=true;validOrder[size_t(n++)]=id;}
+        for(int id=0;id<6;++id)if(!used[size_t(id)])validOrder[size_t(n++)]=id;
+    }
     static constexpr std::array<double,8> roomSeconds{{.0297,.0371,.0411,.0437,.0307,.0353,.0399,.0479}};
     Stereo driveFX(Stereo x,const FXParameters& p) {
         double level=std::max(std::abs(x.l),std::abs(x.r));
+        if(level==0&&detector==0)return x;
         double tau=level>detector?p.compAttack:p.compRelease;
-        detector+=(level-detector)*(1-std::exp(-1/(sr*std::max(.0001,tau))));
+        auto& cache=level>detector?attackCoefficient:releaseCoefficient;
+        detector+=(level-detector)*cache.get(tau,[&]{return 1-std::exp(-1/(sr*std::max(.0001,tau)));});
         double db=20*std::log10(std::max(detector,1e-9));
         double over=db-p.compThreshold,knee=6, reduction=0;
         if(over>knee*.5) reduction=over*(1-1/p.compRatio);
         else if(over>-knee*.5) reduction=(1-1/p.compRatio)*(over+knee*.5)*(over+knee*.5)/(2*knee);
         double gain=std::pow(10,(p.compMakeup-reduction)/20);
         double amount=1+p.fxSaturation*5;
-        return {std::tanh(x.l*gain*amount)/std::sqrt(amount),std::tanh(x.r*gain*amount)/std::sqrt(amount)};
+        const double normalisation=saturationRoot.get(amount,[&]{return std::sqrt(amount);});
+        return {std::tanh(x.l*gain*amount)/normalisation,std::tanh(x.r*gain*amount)/normalisation};
     }
     Stereo chorusFX(Stereo x,const FXParameters& p) {
         double base=p.chorusMode==1?.002:.012;
@@ -270,7 +421,7 @@ class FXRack {
         double flutter=(std::sin(clock*73)+.4*std::sin(clock*113))*p.flutter*.0012;
         double modulation=p.delayType==0?0:p.wow*.008*wander+flutter;
         Stereo wet{delayL.read(delayTime*(1+modulation)),delayR.read(delayTime*(p.delayMode==1?1.013:1)*(1-modulation*.7))};
-        double coefficient=1-std::exp(-2*pi*clamp(p.delayTone,200.0,sr*.2)/sr);
+        double coefficient=toneCoefficient.get(p.delayTone,[&]{return 1-std::exp(-2*pi*clamp(p.delayTone,200.0,sr*.2)/sr);});
         delayLpf+=coefficient*(wet.l-delayLpf);delayRpf+=coefficient*(wet.r-delayRpf);
         double damage=p.delayType==0?1:1-p.damage*.85*(.5+.5*std::sin(clock*19+wander*11));
         wet={delayLpf*damage,delayRpf*damage};
@@ -282,7 +433,7 @@ class FXRack {
     }
     Stereo grainFX(Stereo x,const FXParameters& p) {
         if(!p.freeze) { grainL.push(x.l);grainR.push(x.r);grainAvailable=std::min(grainAvailable+1,sr*3.5); }
-        double length=std::max(64.0,p.grainSize*sr),ratio=std::exp2(p.grainPitch/12);
+        double length=std::max(64.0,p.grainSize*sr),ratio=pitchRatio.get(p.grainPitch,[&]{return std::exp2(p.grainPitch/12);});
         Stereo wet{}; double total=0;
         for(size_t k=0;k<grainPhase.size();++k) {
             double phase=grainPhase[k];double w=.5-.5*std::cos(2*pi*phase);
@@ -312,10 +463,13 @@ class FXRack {
 public:
     void prepare(double sampleRate) {
         sr=sampleRate;
-        delayL.prepare(size_t(sr*5));delayR.prepare(size_t(sr*5));
-        chorusL.prepare(size_t(sr*.06));chorusR.prepare(size_t(sr*.06));
-        grainL.prepare(size_t(sr*4));grainR.prepare(size_t(sr*4));
-        for(auto& r:room) r.prepare(size_t(sr*.12));
+        // Exact maximum read distances across every exposed parameter and 20 BPM.
+        // Keep double samples and interpolation; remove only unreachable history.
+        delayL.prepare(size_t(std::ceil(sr*3.1))+4);delayR.prepare(size_t(std::ceil(sr*3.1))+4);
+        chorusL.prepare(size_t(std::ceil(sr*.016))+4);chorusR.prepare(size_t(std::ceil(sr*.016))+4);
+        grainL.prepare(size_t(std::ceil(sr*1.64))+40);grainR.prepare(size_t(std::ceil(sr*1.64))+40);
+        for(size_t k=0;k<room.size();++k)room[k].prepare(size_t(std::ceil(sr*roomSeconds[k]*1.55))+4);
+        attackCoefficient={};releaseCoefficient={};toneCoefficient={};pitchRatio={};saturationRoot={};
         reset();
     }
     void reset() {
@@ -325,12 +479,8 @@ public:
         grainPhase={{0,.25,.5,.75}};
     }
     Stereo process(Stereo x,const FXParameters& p,double bpm) {
-        clock+=1/sr;std::array<bool,6> used{};
-        // Sanitize automated permutations: no repeated processing or omitted FX.
-        std::array<int,6> valid{};int n=0;
-        for(int id:p.order) if(id>=0&&id<6&&!used[size_t(id)]) { used[size_t(id)]=true;valid[size_t(n++)]=id; }
-        for(int id=0;id<6;++id) if(!used[size_t(id)]) valid[size_t(n++)]=id;
-        for(int id:valid) {
+        clock+=1/sr;updateOrder(p.order);
+        for(int id:validOrder) {
             switch(id) {
             case 0: if(p.fxDrive) x=driveFX(x,p);break;
             case 1: if(p.fxChorus) x=chorusFX(x,p);break;
@@ -356,30 +506,118 @@ class Instrument {
     uint32_t voiceSerial=0;
     BassVoice bass;
     std::array<PadVoice,12> pads;
+    std::array<PadVoice,8> events;
+    std::array<StruckVoice,16> struck;
+    double nextEvent=0,seconds=0,artifactEnvelope=0,artifactHold=0;
+    int bassMidi=-1;
+    int64_t rhythmStep=std::numeric_limits<int64_t>::min();
+    std::array<int,4> previousChord{{60,64,67,72}},padChord{{60,64,67,72}};
+    std::array<double,16> modWheel{};
+    int previewMask=0,previewRoot=-1;
+    bool midiActive=false;
+    uint64_t artifactCounter=0;
+public:
+    // Event observer runs on the audio thread. It must not allocate, lock or do I/O.
+    using NoteObserver=void(*)(void*,int,int,double,double);
+    NoteObserver observer=nullptr;void* observerContext=nullptr;
+private:
+    void observe(int n,int ch,double v,double duration) { if(observer) observer(observerContext,n,ch,v,duration); }
+    void bassNote(int n,double v,bool slideNote,bool accentNote) {
+        if(bassMidi>=0)observe(bassMidi,1,0,0);
+        bass.note(n,v,slideNote,accentNote);bassMidi=n;observe(n,1,v,-1);
+    }
+    void bassOff() {bass.off();if(bassMidi>=0)observe(bassMidi,1,0,0);bassMidi=-1;}
+    void releasePad(PadVoice& v,int ch=2) {if(v.env.active()&&!v.releasing)observe(int(v.note),ch,0,0);v.off();}
+    void configureKrell(PadVoice& v,const Parameters& p) {
+        v.krell=true;uint32_t seed=uint32_t(p.lockTimbre?p.timbreSeed:p.seed);
+        v.attackScale=.15+unit(seed,voiceSerial+11)*2.8;
+        v.releaseScale=.3+unit(seed,voiceSerial+12)*2.5;
+        v.secondLength=v.lifetime*(.2+1.6*unit(seed,voiceSerial+13));
+        v.secondInterval=unit(seed,voiceSerial+14)<p.krellIndependence?(unit(seed,voiceSerial+18)>.5?7:-12):0;
+        if(unit(seed,voiceSerial+19)>p.harmonic)v.secondInterval+=1;
+        v.fmDepth=p.krellFM*6*unit(seed,voiceSerial+15);
+        v.cutoffScale=std::exp2((unit(seed,voiceSerial+16)*2-1)*p.krellRange*2);
+        v.blendOffset=(unit(seed,voiceSerial+17)-.5)*p.krellIndependence;
+    }
+    int ambientRoot() const {return midiActive?root:((previewMask&2)?previewRoot:-1);}
+    int bassRoot() const {return midiActive?root:((previewMask&1)?previewRoot:-1);}
+    void startEvent(const Parameters& p) {
+        int r=ambientRoot();if(r<0) return;
+        auto* v=&*std::min_element(events.begin(),events.end(),[](const auto& a,const auto& b){
+            if(a.env.active()!=b.env.active()) return !a.env.active();
+            return a.age>b.age;
+        });
+        ++voiceSerial;uint32_t seed=uint32_t(p.lockNotes?p.phraseSeed:p.seed);
+        int degree=int(unit(seed,voiceSerial+22)*7);
+        double n=r+12+scaleOffset(degree,p.scale)+12*int(unit(seed,voiceSerial+23)*p.krellRange*2);
+        if(unit(seed,voiceSerial+24)>p.harmonic) n+=1;
+        n=clamp(n,36.0,96.0);
+        releasePad(*v,3);
+        v->start(n,unit(seed,voiceSerial+25)*2-1,hash(uint32_t(p.lockTimbre?p.timbreSeed:p.seed)^voiceSerial),velocity);
+        v->lifetime=.1+p.krellRate*(.3+unit(seed,voiceSerial+26)*1.7);
+        configureKrell(*v,p);observe(int(n),3,velocity,-1);
+    }
+    void playRhythm(const Parameters& p,int64_t step,double period,bool bassHit) {
+        const int r=ambientRoot();if(r<0) return;
+        const uint32_t seed=uint32_t(p.lockRhythm?p.rhythmSeed:p.seed);
+        if(unit(seed,uint32_t(step)*37+20)>p.rhythmDensity) return;
+        if(bassHit&&unit(seed,uint32_t(step)*37+21)<p.interaction) return;
+        constexpr int chords[5][4]={{0,4,7,12},{0,3,7,12},{0,7,12,19},{0,5,7,12},{0,3,7,10}};
+        for(int i=0;i<4;++i) {
+            if(p.rhythmPattern==2&&i!=int((step%4+4)%4)) continue;
+            if(p.rhythmPattern==3&&i%2!=int((step%2+2)%2)) continue;
+            int n=r+chords[clamp(p.chord,0,4)][i];
+            while(n<48)n+=12;
+            while(n>84)n-=12;
+            while(n-previousChord[size_t(i)]>6&&n>48)n-=12;
+            while(previousChord[size_t(i)]-n>6&&n<84)n+=12;
+            previousChord[size_t(i)]=n;
+            auto* v=&*std::min_element(struck.begin(),struck.end(),[](const auto& a,const auto& b){
+                if(a.active!=b.active)return !a.active;
+                return a.age>b.age;
+            });
+            double vel=velocity*(step%4==0?1.0:.72)*(1-p.humanize*.3*unit(seed,uint32_t(step)*41+uint32_t(i)));
+            double delay=p.rhythmPattern==1?i*p.strum:i*p.strum*.1;
+            double length=period*60/bpm*p.rhythmGate;
+            v->start(n,vel,(i-1.5)*.3*p.spread,length,p.rhythmSound,delay);
+            observe(n,2,vel,length+delay);
+        }
+    }
     FXRack bassRack,padRack,masterRack;
-    double dcInL=0,dcInR=0,dcOutL=0,dcOutR=0;
+    double dcInL=0,dcInR=0,dcOutL=0,dcOutR=0,dcCoefficient=0,artifactDecay=0;
     void startPad(const Parameters& p,bool replace) {
-        if(replace) for(auto& v:pads) v.off();
-        if(root<0) return;
+        if(replace) for(auto& v:pads) releasePad(v);
+        if(ambientRoot()<0) return;
         constexpr int chords[5][4]={{0,4,7,12},{0,3,7,12},{0,7,12,19},{0,5,7,12},{0,3,7,10}};
         for(int i=0;i<4;++i) {
             PadVoice* selected=nullptr;
             for(auto& v:pads) if(!v.env.active()) { selected=&v;break; }
             if(!selected) { double oldest=-1;for(auto& v:pads) if(v.releasing&&v.age>oldest) { selected=&v;oldest=v.age; } }
             if(!selected) selected=&*std::max_element(pads.begin(),pads.end(),[](const auto& a,const auto& b){return a.age<b.age;});
-            double n=root+chords[clamp(p.chord,0,4)][i];
+            double n=ambientRoot()+chords[clamp(p.chord,0,4)][i];
             while(n<48) n+=12;
             while(n>84) n-=12;
+            if(p.padMode!=2) {
+                while(n-padChord[size_t(i)]>6&&n>48)n-=12;
+                while(padChord[size_t(i)]-n>6&&n<84)n+=12;
+                if(p.padMode==1&&unit(uint32_t(p.seed),voiceSerial+101)<p.evolutionDepth*.3)n+=i%2?12:-12;
+                n=clamp(n,48.0,84.0);padChord[size_t(i)]=int(n);
+            }
             if(p.padMode==2) n+=12*(unit(uint32_t(p.seed),++voiceSerial)>.8?1:0);
-            selected->start(n,-.8+i*.53,hash(uint32_t(p.seed)^++voiceSerial),velocity);
+            releasePad(*selected);
+            selected->start(n,-.8+i*.53,hash(uint32_t(p.lockTimbre?p.timbreSeed:p.seed)^++voiceSerial),velocity);
             selected->lifetime=p.evolution*(.5+unit(uint32_t(p.seed),voiceSerial));
+            selected->krell=false;selected->secondInterval=0;selected->fmDepth=0;selected->cutoffScale=1;selected->blendOffset=0;
+            if(p.padMode==2) configureKrell(*selected,p);
+            observe(int(n),2,velocity,-1);
         }
         padClock=0;
     }
     void chooseRoot(const Parameters& p,double ppq) {
         Held* latest=nullptr;
         for(auto& h:held) if((h.key||h.sustained)&&(!latest||h.serial>latest->serial)) latest=&h;
-        int nextRoot=latest?latest->note:(p.latch?root:-1);
+        midiActive=latest!=nullptr||(p.latch&&midiActive);
+        int nextRoot=latest?latest->note:(p.latch&&midiActive?root:(previewMask?previewRoot:-1));
         int channel=latest?latest->channel:rootChannel;
         if(nextRoot!=root || channel!=rootChannel) {
             bool overlapping=root>=0;
@@ -387,24 +625,42 @@ class Instrument {
             velocity=latest?latest->velocity:velocity;
             if(root>=0) {
                 if(p.restart) { anchor=ppq;lastStep=std::numeric_limits<int64_t>::min(); }
-                if(p.direct) bass.note(root,velocity,p.legato&&overlapping,false);
-                else { bass.note(root,velocity,false,false);gateUntil=ppq+divisionBeats(p.division)*p.gate;previousSlide=false; }
-                if(p.pad) startPad(p,true);
-            } else { bass.off();for(auto& v:pads) v.off();previousSlide=false; }
+                if(p.direct&&p.bass) bassNote(root,velocity,p.legato&&overlapping,false);
+                else if(p.bass) {lastStep=std::numeric_limits<int64_t>::min();gateUntil=-1;previousSlide=false;}
+                if(p.pad&&p.backgroundOn) startPad(p,true);
+            } else { bassOff();for(auto& v:pads) releasePad(v);for(auto& v:events)releasePad(v,3);previousSlide=false; }
         } else if(latest) velocity=latest->velocity;
     }
 public:
-    void prepare(double sr) { rate=sr;bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);reset(); }
+    void prepare(double sr) { rate=sr;dcCoefficient=std::exp(-2*pi*5/rate);artifactDecay=std::exp(-1/(rate*.012));bass.prepare(sr);for(auto& v:pads)v.prepare(sr);for(auto& v:events)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);reset(); }
     void reset() {
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
         for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.age=0; }
         bassRack.reset();padRack.reset();masterRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
         anchor=padClock=0;gateUntil=-1;havePosition=wasPlaying=false;voiceSerial=0;dcInL=dcInR=dcOutL=dcOutR=0;
         previousBass=true;previousPad=false;previousDirect=false;
+        for(auto& v:events) {v.env.reset();v.fl.reset();v.a={};v.b={};}
+        struck={};nextEvent=seconds=artifactEnvelope=artifactHold=0;artifactCounter=0;bassMidi=-1;
+        rhythmStep=std::numeric_limits<int64_t>::min();previousChord={{60,64,67,72}};padChord=previousChord;
+        previewMask=0;previewRoot=-1;midiActive=false;modWheel.fill(0);
+    }
+    void setPreview(bool b,bool a,int note,const Parameters& p,double ppq) {
+        int mask=(b?1:0)|(a?2:0);
+        if(mask==previewMask&&note==previewRoot) return;
+        bool startAmbient=(mask&2)&&(!(previewMask&2)||note!=previewRoot);
+        bool startBass=(mask&1)&&(!(previewMask&1)||note!=previewRoot);
+        previewMask=mask;previewRoot=note;
+        if(!midiActive) {
+            root=mask?note:-1;rootChannel=1;velocity=.8;
+            if(startBass) { if(p.direct)bassNote(note,velocity,false,false); lastStep=std::numeric_limits<int64_t>::min();anchor=ppq; }
+            if(!(mask&1)) bassOff();
+            if(startAmbient&&p.backgroundOn) startPad(p,true);
+            if(!(mask&2)) {for(auto& v:pads)releasePad(v);for(auto& v:events)releasePad(v,3);}
+        }
     }
     int currentRoot() const {return root;}
     int64_t stepPosition() const { return lastStep; }
-    void allOff() { held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
+    void allOff() { held={};sustain.fill(false);root=-1;midiActive=false;previewMask=0;previewRoot=-1;bassOff();for(auto& v:pads)releasePad(v);for(auto& v:events)releasePad(v,3);previousSlide=false;gateUntil=-1; }
     void noteOn(int note,int channel,double v,const Parameters& p,double ppq) {
         if(note<0||note>127||channel<1||channel>16) return;
         if(v<=0) { noteOff(note,channel,p,ppq);return; }
@@ -412,7 +668,7 @@ public:
         auto& h=held[size_t((channel-1)*128+note)];h={note,channel,clamp(v,0.0,1.0),++serial,true,false};
         chooseRoot(p,ppq);
         // Repeated same-pitch MIDI notes still articulate in DIRECT mode.
-        if(p.direct&&sameRoot) bass.note(note,v,p.legato,false);
+        if(p.direct&&p.bass&&sameRoot) bassNote(note,v,p.legato,false);
     }
     void noteOff(int note,int channel,const Parameters& p,double ppq) {
         if(note<0||note>127||channel<1||channel>16) return;
@@ -422,6 +678,7 @@ public:
     }
     void controller(int channel,int number,int value,const Parameters& p,double ppq) {
         if(channel<1||channel>16) return;
+        if(number==1) modWheel[size_t(channel-1)]=clamp(value/127.0,0.0,1.0);
         if(number==64) {
             sustain[size_t(channel-1)]=value>=64;
             if(value<64) for(auto& h:held) if(h.channel==channel&&!h.key) h.sustained=false;
@@ -432,23 +689,25 @@ public:
     void pitchBend(int channel,int value) { if(channel>=1&&channel<=16) bend[size_t(channel-1)]=double(value-8192)/8192*2; }
     void beginBlock(double ppq,double tempo,bool playing) {
         bpm=clamp(tempo,20.0,400.0);
-        if(havePosition && playing && (ppq<lastPPQ-.001 || ppq-lastPPQ>.25)) {
-            // Host seek/loop: no stale keys or hanging scheduled gates. FX tails survive.
-            allOff();lastStep=std::numeric_limits<int64_t>::min();anchor=0;
+        if(playing && (!wasPlaying || (havePosition&&(ppq<lastPPQ-.001 || ppq-lastPPQ>.25)))) {
+            // Repeatable host start / loop: no stale notes, stochastic phases or FX history.
+            allOff();reset();bpm=clamp(tempo,20.0,400.0);
         }
         if(wasPlaying&&!playing) allOff();
         wasPlaying=playing;havePosition=true;lastPPQ=ppq;
     }
     Stereo next(const Parameters& p,double ppq,int hostNumerator=4,int hostDenominator=4) {
         const double period=divisionBeats(p.division);
-        if(previousPad&&!p.pad) for(auto& v:pads) v.off();
-        if(previousBass&&!p.bass) bass.off();
-        if(root>=0&&((!previousBass&&p.bass)||(previousDirect!=p.direct))) {
-            bass.note(root,velocity,false,false);lastStep=std::numeric_limits<int64_t>::min();
+        if(previousPad&&!p.pad) for(auto& v:pads) releasePad(v);
+        if(previousBass&&!p.bass) bassOff();
+        if(bassRoot()>=0&&((!previousBass&&p.bass)||(previousDirect!=p.direct))) {
+            if(p.direct)bassNote(root,velocity,false,false);
+            lastStep=std::numeric_limits<int64_t>::min();
         }
         previousPad=p.pad;previousBass=p.bass;previousDirect=p.direct;
-        if(!p.direct&&root>=0) {
-            double pos=ppq-(p.restart?anchor:0);
+        bool bassHit=false;
+        if(!p.direct&&p.bass&&bassRoot()>=0) {
+            double pos=ppq-(p.restart?anchor:0)+1e-10;
             int64_t pair=int64_t(std::floor(pos/(period*2)));
             double inside=pos-double(pair)*period*2;
             int64_t step=pair*2+(inside>=period*(1+p.swing*.5)?1:0);
@@ -457,38 +716,75 @@ public:
                 int count=std::max(1,int(std::lround(double(num)*4/std::max(1,den)*p.bars/period)));
                 auto s=makeStep(p,step,count);
                 if(!s.rest) {
-                    bass.note(root+scaleOffset(s.degree,p.scale)+12*s.octave,velocity*s.velocity,previousSlide,s.accent);
+                    int n=bassRoot()+scaleOffset(s.degree,p.scale)+12*s.octave;
+                    bassNote(n,velocity*s.velocity,previousSlide,s.accent);bassHit=true;
+
                     gateUntil=ppq+period*s.length;previousSlide=s.slide;
-                } else { bass.off();previousSlide=false;gateUntil=-1; }
+                } else { bassOff();previousSlide=false;gateUntil=-1; }
                 lastStep=step;
             }
-            if(gateUntil>=0&&ppq>=gateUntil&&!previousSlide) { bass.off();gateUntil=-1; }
+            if(gateUntil>=0&&ppq+1e-10>=gateUntil&&!previousSlide) { bassOff();gateUntil=-1; }
         }
-        if(root>=0&&p.pad) {
+        if(ambientRoot()>=0&&p.pad&&p.backgroundOn) {
             bool active=false;for(auto& v:pads) if(v.env.active()&&!v.releasing) active=true;
             if(!active) startPad(p,false);
             padClock+=1/rate;
-            if(p.padMode==1&&padClock>=p.evolution) { for(auto& v:pads)v.off();startPad(p,false); }
+            if(p.padMode==1&&padClock>=p.evolution) { for(auto& v:pads)releasePad(v);startPad(p,false); }
             if(p.padMode==2) {
                 // Each active voice ends its own cycle; release tails overlap its replacement.
                 for(size_t k=0;k<pads.size();++k) if(pads[k].env.active()&&!pads[k].releasing&&pads[k].age>pads[k].lifetime) {
-                    auto pan=pads[k].pan;pads[k].off();
+                    auto pan=pads[k].pan;releasePad(pads[k]);
                     PadVoice* replacement=nullptr;
                     for(auto& candidate:pads) if(!candidate.env.active()) {replacement=&candidate;break;}
                     if(!replacement) for(auto& candidate:pads) if(candidate.releasing && &candidate!=&pads[k]) {replacement=&candidate;break;}
                     if(replacement) {
                         int degree=int(unit(uint32_t(p.seed),++voiceSerial)*7);
-                        double n=root+scaleOffset(degree,p.scale);while(n<48)n+=12;while(n>84)n-=12;
-                        replacement->start(n,pan,hash(uint32_t(p.seed)^voiceSerial),velocity);
+                        double n=ambientRoot()+scaleOffset(degree,p.scale);while(n<48)n+=12;
+            while(n>84)n-=12;
+                        releasePad(*replacement);
+                        replacement->start(n,pan,hash(uint32_t(p.lockTimbre?p.timbreSeed:p.seed)^voiceSerial),velocity);
                         replacement->lifetime=p.evolution*(.5+unit(uint32_t(p.seed),voiceSerial+31));
+                        configureKrell(*replacement,p);observe(int(n),2,velocity,-1);
                     }
                 }
             }
         }
+        seconds+=1/rate;
+        if(p.pad&&p.eventsOn&&ambientRoot()>=0) {
+            double eventPosition=p.krellSync?ppq:seconds;
+            if(eventPosition>=nextEvent||eventPosition<nextEvent-p.krellRate*4) {
+                startEvent(p);
+                double interval=p.krellRate*(.2+unit(uint32_t(p.seed),voiceSerial+55));
+                if(p.krellSync) interval=std::max(.25,std::round(interval*4)*.25);
+                nextEvent=eventPosition+interval;
+            }
+        }
+        for(auto& v:events) if(v.env.active()&&!v.releasing&&(v.age>=v.lifetime||!p.eventsOn||ambientRoot()<0))releasePad(v,3);
+        if(p.pad&&p.rhythmOn&&ambientRoot()>=0) {
+            double d=divisionBeats(p.rhythmDivision);
+            double quantisedPPQ=ppq+1e-10;
+            int64_t pair=int64_t(std::floor(quantisedPPQ/(2*d)));
+            int64_t step=pair*2+((quantisedPPQ-pair*2*d)>=d*(1+p.rhythmSwing*.5)?1:0);
+            if(step!=rhythmStep) {playRhythm(p,step,d,bassHit);rhythmStep=step;}
+        }
+        if(!p.backgroundOn) for(auto& v:pads)releasePad(v);
         double b=bass.next(p,bend[size_t(rootChannel-1)])*p.bassLevel;
         Stereo dryBass{b,b},dryPad{};
-        for(auto& v:pads) dryPad=dryPad+v.next(p,rate,bend[size_t(rootChannel-1)]);
-        dryPad=dryPad*p.padLevel;
+        for(auto& v:pads) dryPad=dryPad+v.next(p,rate,bend[size_t(rootChannel-1)])*p.backgroundLevel;
+        Stereo rhythm{},eventAudio{};
+        for(auto& v:struck) rhythm=rhythm+v.next(rate,bend[size_t(rootChannel-1)]);
+        for(auto& v:events) eventAudio=eventAudio+v.next(p,rate,bend[size_t(rootChannel-1)]);
+        double macro=.75+.25*std::sin(2*pi*ppq/(std::max(1,p.evolutionBars)*4.0));
+        dryPad=(dryPad*(1-p.evolutionDepth+macro*p.evolutionDepth)+rhythm*p.rhythmLevel+eventAudio*p.eventsLevel)*p.padLevel;
+        // Stochastic dropouts and crackle act on the ambient dry path, independently of FX repeats.
+        double probability=p.artifactRate*6/rate;
+        if(unit(uint32_t(p.lockTimbre?p.timbreSeed:p.seed),uint32_t(artifactCounter++))<probability) {
+            artifactEnvelope=1;artifactHold=.004+.06*unit(uint32_t(p.seed),uint32_t(artifactCounter));
+        }
+        if(artifactHold>0) artifactHold-=1/rate;else artifactEnvelope*=artifactDecay;
+        double damage=p.artifactDepth*(1+.5*modWheel[size_t(rootChannel-1)])*artifactEnvelope;
+        double crackle=(unit(17,uint32_t(artifactCounter))*2-1)*damage*.025;
+        if(ambientRoot()>=0)dryPad=dryPad*(1-damage*.9)+Stereo{crackle,-crackle*.7};
         // Both racks always advance, including after NOTE OFF, so tails remain audible.
         Stereo processedBass=bassRack.process(p.bass?dryBass:Stereo{},p,bpm);
         Stereo processedPad=padRack.process(p.pad?dryPad:Stereo{},p.padRack,bpm);
@@ -497,7 +793,6 @@ public:
         // Master is after the layer sum, before output level / peak guard.
         auto processedMaster=masterRack.process(out,p.masterRack,bpm);
         out=(out*(1-p.masterFX)+processedMaster*p.masterFX)*p.master;
-        const double dcCoefficient=std::exp(-2*pi*5/rate);
         double l=out.l-dcInL+dcCoefficient*dcOutL,r=out.r-dcInR+dcCoefficient*dcOutR;
         dcInL=out.l;dcInR=out.r;dcOutL=l;dcOutR=r;
         if(!std::isfinite(l)||!std::isfinite(r)) { dcInL=dcInR=dcOutL=dcOutR=0;return {}; }
