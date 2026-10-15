@@ -29,7 +29,7 @@ int main() {
         check(a.degree==b.degree&&a.rest==b.rest&&a.slide==b.slide,"repeatable phrase");
     }}
     // Distinguishable styles; legacy 0..4 keep their original motifs.
-    Parameters rock; rock.style=5;rock.density=1.0;
+    Parameters rock; rock.style=5;rock.density=1.0;rock.movement=1.0;rock.variation=0.0;
     Parameters metal=rock;metal.style=7;
     int patternsDifferent=0;
     for(int n=0;n<16;++n)patternsDifferent+=(makeStep(rock,n,16).degree!=makeStep(metal,n,16).degree);
