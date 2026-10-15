@@ -203,6 +203,12 @@ void BassAmbientProcessor::applyPreset(int preset) {
     if(preset==3) { set("bass",0);set("pad",1);set("padMode",1);set("engine1",0);set("engine2",2);set("pad_reverbMix",.5f);set("padAttack",3);set("padRelease",9); }
     if(preset==4) { set("bass",0);set("pad",1);set("padMode",2);set("engine1",3);set("engine2",4);set("pad_fxGrain",1);set("pad_grainPitch",7);set("pad_damage",.35f);set("motion",.7f); }
     if(preset==5) { set("bass",1);set("pad",1);set("model",2);set("padLevel",.25f);set("padAttack",4);set("padRelease",8); }
+    // New factory scenes appended without modifying the previous six presets.
+    if(preset==6) { set("style",5);set("model",2);set("bassWave",0);set("density",.92f);set("gate",.78f);set("drive",.25f); }
+    if(preset==7) { set("style",6);set("model",2);set("density",.68f);set("gate",.45f);set("bassFX",.3f);set("delayMix",.36f); }
+    if(preset==8) { set("style",7);set("model",2);set("density",1.0f);set("gate",.74f);set("drive",.58f); }
+    if(preset==9) { set("style",8);set("model",2);set("density",.92f);set("sub",.55f);set("cutoff",1300); }
+    if(preset==10){ set("style",9);set("model",2);set("density",.82f);set("gate",.96f);set("bassRelease",1.2f);set("pad",1);set("padLevel",.18f); }
     resetRequested=true;
 }
 juce::AudioProcessorEditor* BassAmbientProcessor::createEditor() { return new BassAmbientEditor(*this); }
