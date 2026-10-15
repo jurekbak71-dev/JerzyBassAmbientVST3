@@ -110,6 +110,18 @@ int main() {
         b=a;b.masterRack.order={{5,4,3,2,1,0}};
         check(std::isfinite(compareRacks(a,b)),"three racks granular freeze remain finite");
     }
+    // Generated MIDI mirrors active phrase notes but never echoes DIRECT MIDI.
+    {
+        Instrument generator;generator.prepare(48000);Parameters q; q.style=5;
+        q.direct=false;q.midiOut=true;q.density=1.0;q.division=2;
+        generator.noteOn(36,1,1.0,q,0.0);
+        generator.next(q,0.0);
+        check(generator.generatedMidiNote()>=36 && generator.generatedMidiNote()<96,
+              "internal generator exposes a valid MIDI note");
+        q.direct=true;generator.next(q,0.01);
+        check(generator.generatedMidiNote()==-1,"direct mode does not generate duplicate MIDI output");
+        generator.allOff();check(generator.generatedMidiNote()==-1,"panic clears exported MIDI note");
+    }
     // CPU sanity benchmark, release build only: report, don't depend on machine speed.
     Instrument s;s.prepare(48000);p=Parameters{};p.pad=true;p.fxGrain=true;s.noteOn(36,1,1,p,0);double ppq=0;
     auto start=std::chrono::steady_clock::now();auto total=energy(s,p,48000,48000,ppq);
