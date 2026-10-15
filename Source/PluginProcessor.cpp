@@ -76,6 +76,7 @@ jerzy::Parameters BassAmbientProcessor::readParameters() const {
 
 void BassAmbientProcessor::prepareToPlay(double sampleRate,int) {
     sr=sampleRate;instrument.prepare(sr);current=readParameters();localPPQ=0;resetRequested=false;
+    lastExportedNote=-1;generatedMidi.ensureSize(4096);
 }
 bool BassAmbientProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
     return buses.getMainInputChannelSet().isDisabled()&&buses.getMainOutputChannelSet()==juce::AudioChannelSet::stereo();
@@ -84,7 +85,7 @@ bool BassAmbientProcessor::isBusesLayoutSupported(const BusesLayout& buses) cons
 void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) {
     juce::ScopedNoDenormals noDenormals;
     if(resetRequested.exchange(false)) instrument.reset();
-    audio.clear();auto target=readParameters();
+    audio.clear();generatedMidi.clear();auto target=readParameters();
     // Structural changes are immediate; continuous controls ramp at audio rate.
     auto previous=current;current=target;
 #define BOOL(f,l,g)
@@ -160,10 +161,22 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
             ++event;
         }
         auto output=instrument.next(current,position,num,den);
+        // Mirror generated bass notes to MIDI OUT; DIRECT uses incoming MIDI only.
+        const int emitted=(current.midiOut && current.bass && !current.direct)?
+            instrument.generatedMidiNote():-1;
+        if(emitted!=lastExportedNote) {
+            if(lastExportedNote>=0)
+                generatedMidi.addEvent(juce::MidiMessage::noteOff(1,lastExportedNote),sample);
+            if(emitted>=0)
+                generatedMidi.addEvent(juce::MidiMessage::noteOn(1,emitted,
+                    (juce::uint8)juce::jlimit(1,127,juce::roundToInt(instrument.generatedMidiVelocity()*127.0f))),sample);
+            lastExportedNote=emitted;
+        }
         audio.setSample(0,sample,float(output.l));audio.setSample(1,sample,float(output.r));
         maximum=std::max(maximum,float(std::max(std::abs(output.l),std::abs(output.r))));
     }
-    localPPQ=ppq+audio.getNumSamples()*increment;midi.clear();
+    localPPQ=ppq+audio.getNumSamples()*increment;
+    midi.swapWith(generatedMidi);
     rootDisplay=instrument.currentRoot();peak=maximum;
 }
 
