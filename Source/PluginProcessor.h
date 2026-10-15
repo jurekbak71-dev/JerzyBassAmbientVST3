@@ -20,7 +20,7 @@ public:
     bool hasEditor() const override { return true; }
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return false; }
+    bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 45; }
     int getNumPrograms() override { return 1; }
@@ -39,6 +39,8 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout layout();
     std::vector<std::atomic<float>*> values;
     jerzy::Instrument instrument;
+    juce::MidiBuffer generatedMidi;
+    int lastExportedNote=-1;
     jerzy::Parameters current;
     double sr=48000, localPPQ=0;
     std::atomic<bool> resetRequested{false};
