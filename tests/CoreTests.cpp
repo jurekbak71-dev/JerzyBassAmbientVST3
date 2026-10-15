@@ -24,10 +24,16 @@ int main() {
     check(!env.active()&&v==0,"ADSR release");
     Parameters p;
     check(scaleOffset(-1,0)==-1,"negative scale degrees");check(scaleOffset(7,1)==12,"scale octave");
-    for(int style=0;style<5;++style) { p.style=style;for(int i=0;i<64;++i) {
+    for(int style=0;style<10;++style) { p.style=style;for(int i=0;i<64;++i) {
         auto a=makeStep(p,i,16),b=makeStep(p,i+16,16);
         check(a.degree==b.degree&&a.rest==b.rest&&a.slide==b.slide,"repeatable phrase");
     }}
+    // Distinguishable styles; legacy 0..4 keep their original motifs.
+    Parameters rock; rock.style=5;rock.density=1.0;
+    Parameters metal=rock;metal.style=7;
+    int patternsDifferent=0;
+    for(int n=0;n<16;++n)patternsDifferent+=(makeStep(rock,n,16).degree!=makeStep(metal,n,16).degree);
+    check(patternsDifferent>=2,"Rock and Metal retain distinct musical motifs");
     p.style=0; p.evolve=true;bool different=false;
     for(int i=0;i<16;++i) { auto a=makeStep(p,i,16),b=makeStep(p,i+16,16);different|=a.degree!=b.degree||a.rest!=b.rest||a.slide!=b.slide; }
     check(different,"phrase evolution");p.evolve=false;
