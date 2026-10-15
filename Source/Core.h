@@ -109,19 +109,32 @@ inline Step makeStep(const Parameters& p,int64_t index,int count) {
     int k=int((index%count+count)%count), m=k%16;
     uint32_t cycle=p.evolve?uint32_t(index/count):0;
     uint32_t salt=uint32_t(p.seed)^hash(cycle);
-    static constexpr int motifs[5][16]={
-        {0,0,0,4,0,0,2,0,0,0,4,0,0,2,4,6},
-        {0,0,4,4,0,0,4,0,0,0,4,4,0,2,4,0},
-        {0,0,2,0,4,0,6,2,0,4,0,2,6,0,4,2},
-        {0,0,4,0,2,0,0,6,0,4,2,0,0,6,4,2},
-        {0,0,0,0,0,4,0,0,0,0,2,0,0,0,4,0}};
-    static constexpr double weights[5][16]={
+    // Append new styles; retain indices 0..4 so legacy presets and automation load unchanged.
+    static constexpr int motifs[10][16]={
+        {0,0,0,4,0,0,2,0,0,0,4,0,0,2,4,6}, // Italo Disco
+        {0,0,4,4,0,0,4,0,0,0,4,4,0,2,4,0}, // Disco Polo
+        {0,0,2,0,4,0,6,2,0,4,0,2,6,0,4,2}, // Acid
+        {0,0,4,0,2,0,0,6,0,4,2,0,0,6,4,2}, // Funky
+        {0,0,0,0,0,4,0,0,0,0,2,0,0,0,4,0}, // Techno
+        {0,0,0,4,0,0,4,0,0,0,2,4,0,0,4,0}, // Rock: root, fifth, octave
+        {0,0,0,4,0,0,0,0,0,0,4,0,0,0,0,2}, // Reggae: sparse offbeat
+        {0,0,0,4,0,4,0,4,0,0,4,0,2,0,4,0}, // Metal: driving roots/fifths
+        {0,0,4,0,0,2,4,0,0,0,4,0,2,0,4,6}, // Synthwave
+        {0,0,0,0,0,0,4,0,0,0,0,0,2,0,0,0}  // Ambient: sparse long notes
+    };
+    static constexpr double weights[10][16]={
         {1,.4,1,.6,1,.4,1,.6,1,.4,1,.6,1,.4,1,.8},
         {1,.25,.8,.25,1,.25,.8,.4,1,.25,.8,.25,1,.4,.8,.5},
         {1,.65,.8,.4,.85,.7,.5,.9,.8,.5,.9,.7,.5,.85,.6,.8},
         {1,.15,.45,.9,.2,.65,.95,.3,.7,.2,.85,.4,.15,.9,.3,.75},
-        {1,.2,.7,.2,1,.3,.65,.2,1,.2,.7,.2,1,.3,.7,.4}};
-    int style=clamp(p.style,0,4);
+        {1,.2,.7,.2,1,.3,.65,.2,1,.2,.7,.2,1,.3,.7,.4},
+        {1,.3,.75,.35,.95,.45,.7,.3,1,.3,.75,.45,.95,.3,.8,.4},
+        {.65,.15,.2,.7,.1,.35,.2,.2,.85,.1,.25,.65,.15,.1,.2,.45},
+        {1,.85,1,.80,1,.85,1,.85,1,.85,1,.8,1,.85,1,.9},
+        {1,.25,.8,.4,1,.2,.85,.35,1,.2,.8,.4,1,.2,.9,.5},
+        {1,.08,.12,.05,.15,.05,.42,.1,1,.08,.1,.05,.18,.04,.12,.08}
+    };
+    int style=clamp(p.style,0,9);
     Step s; s.degree=unit(salt,k*11+1)<p.movement?motifs[style][m]:0;
     s.octave=(style==0 && m%4==2)?1:0;
     if(unit(salt,k*11+2)<p.variation*p.movement) s.degree=int(unit(salt,k*11+3)*7);
@@ -129,8 +142,8 @@ inline Step makeStep(const Parameters& p,int64_t index,int count) {
     if(k==0 && p.density>0) s.rest=false;
     s.accent=unit(salt,k*11+5)<p.accent*(m%4==0?1.0:.65);
     s.slide=unit(salt,k*11+6)<p.slide && !s.rest;
-    s.velocity=s.accent?1.0:(style==3?.45+.4*unit(salt,k*11+7):.75);
-    s.length=clamp(p.gate*(style==3?.65:1.0),.03,1.0);
+    s.velocity=s.accent?1.0:(style==3?.45+.4*unit(salt,k*11+7):style==7?.90:style==9?.60:.75);
+    s.length=clamp(p.gate*(style==3?.65:style==6?.55:style==9?1.45:1.0),.03,1.0);
     return s;
 }
 
