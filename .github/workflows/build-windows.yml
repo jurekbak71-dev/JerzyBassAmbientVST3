@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Memory and undefined-behaviour checks
+      - name: Memory and undefined-behaviour checks (restored 0.3.2)
         run: |
           g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -I Source tests/CoreTests.cpp -o core-tests
           ./core-tests
@@ -36,11 +36,14 @@ jobs:
           New-Item -ItemType Directory -Force artifact | Out-Null
           Copy-Item -Recurse $plugin.FullName artifact/
           Copy-Item README.md artifact/README.md
-          Compress-Archive -Path artifact/* -DestinationPath Jerzy-Bass-Ambient-0.2.0-Windows-x64.zip
+          # Include optional Standalone build for Windows when present.
+          $exe = Get-ChildItem build-bass-ambient -Recurse -File -Filter "Jerzy Bass Ambient.exe" | Select-Object -First 1
+          if ($exe) { Copy-Item $exe.FullName artifact/ }
+          Compress-Archive -Path artifact/* -DestinationPath Jerzy-Bass-Ambient-0.3.2-Restored-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Jerzy-Bass-Ambient-Windows-x64-VST3
-          path: Jerzy-Bass-Ambient-0.2.0-Windows-x64.zip
+          path: Jerzy-Bass-Ambient-0.3.2-Restored-Windows-x64.zip
           if-no-files-found: error
           retention-days: 90
       - name: Upload GUI verification images
