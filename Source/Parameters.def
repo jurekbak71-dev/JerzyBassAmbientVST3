@@ -55,3 +55,5 @@ FLOAT(bassFX,0,1,1,"Bass FX amount",4)
 FLOAT(padFX,0,1,1,"Pad FX amount",4)
 FLOAT(master,0,1,1,"Output level",4)
 BOOL(limiter,"Output soft limiter",4)
+// Appended ID preserves existing host parameter identities and automation.
+BOOL(midiOut,"Export bass generator MIDI (channel 1)",1)
