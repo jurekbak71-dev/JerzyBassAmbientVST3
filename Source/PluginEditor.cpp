@@ -192,7 +192,7 @@ BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEdit
     rackSelector.onChange=[this] { selectedRack=rackSelector.getSelectedId()-1;selectPage(2); };
     addAndMakeVisible(rackSelector);
     addAndMakeVisible(viewport);viewport.setScrollBarsShown(true,false);viewport.setScrollOnDragMode(juce::Viewport::ScrollOnDragMode::never);
-    presets.addItemList({"Italo Analog","Acid Machine","808 Foundation","Lush Flow","Krell Dust","Bass + Atmosphere"},1);
+    presets.addItemList({"Italo Analog","Acid Machine","808 Foundation","Lush Flow","Krell Dust","Bass + Atmosphere","Rock Bass","Reggae Dub","Metal Drive","Synthwave Night","Ambient Bass"},1);
     presets.setText("Factory scenes",juce::dontSendNotification);presets.onChange=[this]{processor.applyPreset(presets.getSelectedId()-1);};addAndMakeVisible(presets);
     mutate.onClick=[this] {
         if(auto* seed=processor.state.getParameter("seed")) { auto next=juce::Random::getSystemRandom().nextInt(65535)+1;seed->beginChangeGesture();seed->setValueNotifyingHost(seed->convertTo0to1(float(next)));seed->endChangeGesture(); }
