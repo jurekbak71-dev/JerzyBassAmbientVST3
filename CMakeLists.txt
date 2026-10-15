@@ -17,7 +17,7 @@ juce_add_plugin(JerzyBassAmbient
   COMPANY_NAME "Jerzy" BUNDLE_ID "pl.jerzy.bassambient"
   PLUGIN_MANUFACTURER_CODE Jrzy PLUGIN_CODE Jbam
   FORMATS VST3 Standalone PRODUCT_NAME "Jerzy Bass Ambient"
-  IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT FALSE
+  IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT TRUE
   EDITOR_WANTS_KEYBOARD_FOCUS FALSE COPY_PLUGIN_AFTER_BUILD FALSE)
 juce_generate_juce_header(JerzyBassAmbient)
 target_sources(JerzyBassAmbient PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/JerzyVSTGuiKit.h)
