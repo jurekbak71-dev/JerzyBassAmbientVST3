@@ -134,6 +134,39 @@ public:
     }
 };
 
+// Independent Krell engine: eight evolving FM/noise/harmonic-cloud voices.
+class KrellSynth {
+    struct Voice {Oscillator carrier,modulator;Ladder filter;Envelope env;double note=48,velocity=.8,pan=0,age=0,life=1;uint32_t id=0;bool releasing=false;};
+    std::array<Voice,8> voices{};double rate=48000;uint32_t serial=0;int oldRoot=-1;
+    void automatic(const Parameters& p,int root){
+        const uint32_t id=++serial;const int degree=int(unit(uint32_t(p.seed),id*19+1)*(p.krellPitchRange+1));
+        const int note=clamp(root+12+scaleOffset(degree,p.scale),24,100);trigger(note,.5+.45*unit(uint32_t(p.seed),id*19+2),(unit(uint32_t(p.seed),id*19+3)*2-1)*p.krellStereo,id);
+        for(auto& v:voices)if(v.id==id){v.life=std::min(p.krellCycleMin,p.krellCycleMax)+std::abs(p.krellCycleMax-p.krellCycleMin)*unit(uint32_t(p.seed),id*19+4);break;}
+    }
+public:
+    void prepare(double sr){rate=sr;for(auto& v:voices)v.env.prepare(sr);reset();}
+    void reset(){for(auto& v:voices){v.env.reset();v.filter.reset();v.carrier={};v.modulator={};v.releasing=false;}oldRoot=-1;serial=0;}
+    bool active() const {for(const auto& v:voices)if(v.env.active())return true;return false;}
+    void trigger(int note,double velocity,double pan,uint32_t id){Voice* chosen=nullptr;for(auto& v:voices)if(!v.env.active()){chosen=&v;break;}if(!chosen)chosen=&*std::max_element(voices.begin(),voices.end(),[](const auto& a,const auto& b){return a.age<b.age;});auto& v=*chosen;v.note=note;v.velocity=velocity;v.pan=pan;v.id=id;v.age=0;v.life=1;v.releasing=false;v.env.on();}
+    void noteOff(uint32_t id){for(auto& v:voices)if(v.id==id){v.env.off();v.releasing=true;}}
+    Stereo next(const Parameters& p,int root,bool external){
+        if(!external){
+            if(root!=oldRoot){for(auto& v:voices)if(v.env.active()){v.env.off();v.releasing=true;}if(root>=0)for(int i=0;i<4;++i)automatic(p,root);oldRoot=root;}
+            if(root>=0)for(size_t i=0;i<voices.size();++i)if(voices[i].env.active()&&!voices[i].releasing&&voices[i].age>=voices[i].life){voices[i].env.off();voices[i].releasing=true;automatic(p,root);}
+        }
+        Stereo out{};for(auto& v:voices)if(v.env.active()){
+            const double modulation=.5+.5*std::sin(v.age*.31+v.pan*3),f=hz(v.note+.05*std::sin(v.age*.7));
+            const double phase=v.carrier.phase;v.carrier.next(f,rate,2);const double mod=v.modulator.next(f*(1.5+p.krellTimbre*2),rate,2);
+            double x=std::sin(2*pi*phase+mod*(.2+p.krellTimbre*5)*modulation);
+            if(p.krellEngine==1)x=.6*(unit(uint32_t(p.seed)^v.id,uint32_t(v.age*rate))*2-1)+.4*x;
+            if(p.krellEngine==2)x=.6*x+.25*std::sin(4*pi*phase+mod)+.15*std::sin(6*pi*phase-mod);
+            const double env=v.env.next(p.krellAttack*(.6+modulation),.5,.7,p.krellRelease);
+            x=v.filter.process(x,p.krellCutoff*std::exp2((modulation-.5)*2*p.krellTimbre),p.krellResonance,rate,.12);
+            out=out+panSample(x*env*v.velocity*p.krellLevel*.23,v.pan*p.krellStereo);v.age+=1/rate;
+        }return out;
+    }
+};
+
 // Single audio consumer and single maintenance producer. Allocation and deletion
 // happen only in service(), never in the audio callback. At most one retired rack.
 class ManagedRack {

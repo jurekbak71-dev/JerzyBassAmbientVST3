@@ -96,7 +96,7 @@ class BassAmbientEditor::Page final : public juce::Component {
     std::array<juce::TextButton,6> modules, left, right;
     juce::Label description, generatorHeading;
     int generatorStart=-1;
-    bool isFX() const { return index>=2&&index<=4; }
+    bool isFX() const { return (index>=2&&index<=4)||index==8||index==9||index==11; }
     std::array<juce::TextButton,64> steps;
     std::array<juce::TextButton,4> banks;
     std::array<juce::TextButton,4> laneLabels;
@@ -132,7 +132,7 @@ class BassAmbientEditor::Page final : public juce::Component {
     }
 public:
     std::function<void()> layoutChanged;
-    Page(BassAmbientProcessor& p,int page):processor(p),index(page),prefix(page==3?"pad_":page==4?"master_":"") {
+    Page(BassAmbientProcessor& p,int page):processor(p),index(page),prefix(page==3?"pad_":page==4?"master_":page==8?"arp_":page==9?"drums_":page==11?"krell_":"") {
         const char* descriptions[]{
             "BASS: synth controls, followed by the MIDI phrase generator. One Piano Roll note supplies the root.",
             "AMBIENT: two engines per voice, overlapping envelopes and HOLD / FLOW / KRELL. Shared scale and seed below.",
@@ -142,7 +142,7 @@ public:
             "ARPEGGIO: hold a MIDI chord or use GENERATE. Rhythm, controlled randomness, AMP, filter and stereo notes.",
             "DRUMS: four synthesized voices / 64 steps. Click pads to toggle; right-click for velocity or MIDI Learn.",
             "GENERATE: play without MIDI. Choose root, scale and tempo. In FL Studio the host supplies tempo and position."};
-        description.setText(descriptions[page],juce::dontSendNotification);
+        description.setText(page==10?"KRELL: independent eight-voice evolving FM / noise / harmonic synthesis, separate envelope, mixer and FX.":page==11?"KRELL FX: dedicated processing before the mixer and send effects.":page==8?"ARPEGGIO FX: independent rack before the mixer and sends. Raise Arpeggio FX amount to hear it.":page==9?"DRUMS FX: common controls, independent processing per voice to preserve separate mixer outputs. Raise Drums FX amount.":descriptions[page],juce::dontSendNotification);
         description.setColour(juce::Label::textColourId,muted);addAndMakeVisible(description);
         generatorHeading.setText("PHRASE GENERATOR / MIDI",juce::dontSendNotification);
         generatorHeading.setColour(juce::Label::textColourId,accent);
@@ -154,9 +154,10 @@ public:
             else if(index==1) include=spec.group==2||spec.id=="scale"||spec.id=="seed";
             else if(index==5) include=spec.group==6||spec.id=="chord"||spec.id=="scale"||spec.id=="seed"||spec.id=="evolve";
             else if(index==6) {include=spec.group==7||(spec.group>=8&&spec.group<=11);if(spec.group>=8&&spec.group<=11)itemModule=spec.group-8;}
-            else if(index==7) include=spec.group==5||spec.id=="scale"||spec.id=="seed"||spec.id=="evolve"||spec.id=="master"||spec.id=="limiter";
+            else if(index==10)include=spec.group==23||spec.id=="scale"||spec.id=="seed";
+            else if(index==7) include=spec.group==5||spec.group==25||spec.id=="scale"||spec.id=="seed"||spec.id=="evolve"||spec.id=="master"||spec.id=="limiter";
             else {
-                const bool own=prefix.isEmpty()?(!spec.id.startsWith("pad_")&&!spec.id.startsWith("master_")):spec.id.startsWith(prefix);
+                const bool own=prefix.isEmpty()?(!spec.id.startsWith("pad_")&&!spec.id.startsWith("master_")&&!spec.id.startsWith("arp_")&&!spec.id.startsWith("drums_")&&!spec.id.startsWith("krell_")):spec.id.startsWith(prefix);
                 if(spec.group==3&&own) {
                     auto id=spec.id.substring(prefix.length());
                     if(id.startsWith("order")) continue;
@@ -168,10 +169,13 @@ public:
                     if(id=="fxWidth") module=5;
                     itemModule=module;include=true;
                     if(index==3) spec.label=spec.label.fromFirstOccurrenceOf("Ambient ",false,false);
+                    if(index==11) spec.label=spec.label.fromFirstOccurrenceOf("Krell ",false,false);
+                    if(index==8) spec.label=spec.label.fromFirstOccurrenceOf("Arpeggio ",false,false);
+                    if(index==9) spec.label=spec.label.fromFirstOccurrenceOf("Drums ",false,false);
                     if(index==4) spec.label=spec.label.fromFirstOccurrenceOf("Master ",false,false);
                 }
                 include|=spec.id=="fxEnabled";
-                include|=spec.id==(index==2?"bassFX":index==3?"padFX":"masterFX");
+                include|=spec.id==(index==2?"bassFX":index==3?"padFX":index==8?"arpFX":index==9?"drumsFX":index==11?"krellFX":"masterFX");
                 if(index==4) include|=spec.id=="master"||spec.id=="limiter";
             }
             if(!include) continue;
@@ -180,6 +184,7 @@ public:
             control->setComponentID(spec.id);addAndMakeVisible(*control);
             controls.push_back({std::move(control),itemModule});
         }
+        if(index==0){auto guitar=std::find_if(controls.begin(),controls.end(),[](const auto& item){return item.control->getComponentID().startsWith("guitar");});if(guitar!=controls.end()){const int count=int(controls.end()-guitar);std::rotate(controls.begin()+2,guitar,controls.end());generatorStart+=count;}}
         if(isFX()) for(int k=0;k<6;++k) {
             addAndMakeVisible(modules[size_t(k)]);
             modules[size_t(k)].onClick=[this,k] {
@@ -249,6 +254,7 @@ public:
                 top+=40;count=0;
             }
             auto& item=controls[k];bool visible=index==6?(item.module<0||item.module==selectedDrum):(!isFX()||item.module<0||item.module==selectedModule);
+            if(item.control->getComponentID().startsWith("guitar"))visible&=int(processor.state.getRawParameterValue("model")->load())==3;
             if(apply) item.control->setVisible(visible);
             if(!visible) continue;
             if(apply) item.control->setBounds((count%columns)*cell,top+(count/columns)*148,cell,142);
@@ -282,25 +288,25 @@ public:
 
 BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEditor(p),processor(p),theme(std::make_unique<Theme>()) {
     setLookAndFeel(theme.get());
-    const char* names[]{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER","MIXER"};
-    for(int k=0;k<8;++k) {
-        ProVisual::tint(tabs[size_t(k)],ProVisual::pages[size_t(std::min(k,6))]);tabs[size_t(k)].setButtonText(names[k]);tabs[size_t(k)].onClick=[this,k]{selectPage(k);};addAndMakeVisible(tabs[size_t(k)]);
+    const char* names[]{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER","MIXER","KRELL"};
+    for(int k=0;k<9;++k) {
+        ProVisual::tint(tabs[size_t(k)],ProVisual::pages[size_t(k==8?7:std::min(k,6))]);tabs[size_t(k)].setButtonText(names[k]);tabs[size_t(k)].onClick=[this,k]{selectPage(k);};addAndMakeVisible(tabs[size_t(k)]);
     }
-    for(int k=0;k<8;++k) {
+    for(int k=0;k<12;++k) {
         pages[size_t(k)]=std::make_unique<Page>(processor,k);
-        const int identity[]{0,1,0,1,4,2,3,5};ProVisual::tint(*pages[size_t(k)],ProVisual::pages[size_t(identity[k])]);
+        const int identity[]{0,1,0,1,4,2,3,5,2,3,7,7};ProVisual::tint(*pages[size_t(k)],ProVisual::pages[size_t(identity[k])]);
         pages[size_t(k)]->layoutChanged=[this]{resized();};
     }
     composerView=std::make_unique<ComposerView>(processor);
-    mixerView=std::make_unique<MixerView>(processor);transportView=std::make_unique<TransportView>(processor);addAndMakeVisible(*transportView);
-    for(int k=0;k<4;++k){moduleLeds[size_t(k)]=std::make_unique<SignalLeds>(processor,k,k==3?6:k);addAndMakeVisible(*moduleLeds[size_t(k)]);}
+    mixerView=std::make_unique<MixerView>(processor);transportView=std::make_unique<TransportView>(processor);addAndMakeVisible(*transportView);harmonyView=std::make_unique<HarmonyView>(processor);addAndMakeVisible(*harmonyView);
+    for(int k=0;k<5;++k){moduleLeds[size_t(k)]=std::make_unique<SignalLeds>(processor,k==4?7:k,k==4?7:k==3?6:k);addAndMakeVisible(*moduleLeds[size_t(k)]);}
 
-    rackSelector.addItemList({"BASS rack","AMBIENT rack","MASTER rack"},1);
+    rackSelector.addItemList({"BASS rack","AMBIENT rack","MASTER rack","ARPEGGIO rack","DRUMS rack","KRELL rack"},1);
     rackSelector.setComponentID("rackSelector");rackSelector.setSelectedId(1,juce::dontSendNotification);
     rackSelector.onChange=[this] { selectedRack=rackSelector.getSelectedId()-1;selectPage(4); };
     addAndMakeVisible(rackSelector);
     addAndMakeVisible(viewport);viewport.setScrollBarsShown(true,false);viewport.setScrollOnDragMode(juce::Viewport::ScrollOnDragMode::never);
-    presets.addItemList({"Italo Analog","Acid Machine","808 Foundation","Lush Flow","Krell Dust","Bass + Atmosphere","Deep House PRO","Stereo Glass Arp","Krell Organism PRO"},1);
+    presets.addItemList({"Italo Analog","Acid Machine","808 Foundation","Lush Flow","Krell Dust","Bass + Atmosphere","Deep House PRO","Stereo Glass Arp","Krell Organism PRO","Bass Guitar Groove","Rock Bass Guitar","Metal Bass Guitar","Punk Bass Guitar","Blues Bass Guitar","Independent Krell"},1);
     presets.setText("Factory scenes",juce::dontSendNotification);presets.onChange=[this]{processor.applyPreset(presets.getSelectedId()-1);};addAndMakeVisible(presets);
     mutate.onClick=[this] {
         if(auto* seed=processor.state.getParameter("seed")) { auto next=juce::Random::getSystemRandom().nextInt(65535)+1;seed->beginChangeGesture();seed->setValueNotifyingHost(seed->convertTo0to1(float(next)));seed->endChangeGesture(); }
@@ -313,9 +319,9 @@ BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEdit
     setSize(1200,820);selectPage(0);timerCallback();startTimerHz(20);
 }
 BassAmbientEditor::~BassAmbientEditor() { stopTimer();viewport.setViewedComponent(nullptr,false);setLookAndFeel(nullptr); }
-juce::Component& BassAmbientEditor::currentPage() { if(selected==7)return *mixerView;if(selected==6)return *composerView;return *pages[size_t(selected==4?2+selectedRack:selected==2?5:selected==3?6:selected==5?7:selected)]; }
+juce::Component& BassAmbientEditor::currentPage() { if(selected==8)return *pages[10];if(selected==7)return *mixerView;if(selected==6)return *composerView;return *pages[size_t(selected==4?(selectedRack<3?2+selectedRack:selectedRack==5?11:5+selectedRack):selected==2?5:selected==3?6:selected==5?7:selected)]; }
 void BassAmbientEditor::selectPage(int index) {
-    selected=index;for(int k=0;k<8;++k) tabs[size_t(k)].setToggleState(k==index,juce::dontSendNotification);
+    selected=index;for(int k=0;k<9;++k) tabs[size_t(k)].setToggleState(k==index,juce::dontSendNotification);
     rackSelector.setVisible(index==4);
     viewport.setViewedComponent(&currentPage(),false);resized();viewport.setViewPosition(0,0);
 }
@@ -324,20 +330,22 @@ void BassAmbientEditor::paint(juce::Graphics& g) {
     g.setColour(text);g.setFont(juce::Font(juce::FontOptions(22).withStyle("Bold")));
     g.drawText("JERZY  /  BASS AMBIENT PRO",20,12,400,35,juce::Justification::centredLeft);
     g.setColour(muted);g.setFont(juce::Font(juce::FontOptions(12)));
-    g.drawText("0.5.0 DEVELOPMENT  |  MODULAR GENERATIVE GROOVEBOX",22,47,460,20,juce::Justification::centredLeft);
+    g.drawText("0.6.0 DEVELOPMENT  |  MODULAR GENERATIVE GROOVEBOX",22,47,460,20,juce::Justification::centredLeft);
 }
 void BassAmbientEditor::resized() {
     presets.setBounds(getWidth()-460,22,220,34);mutate.setBounds(getWidth()-228,22,100,34);panic.setBounds(getWidth()-116,22,96,34);
-    int tabWidth=(getWidth()-40)/8;for(int k=0;k<8;++k) tabs[size_t(k)].setBounds(20+k*tabWidth,80,tabWidth-6,38);
-    for(int k=0;k<4;++k)moduleLeds[size_t(k)]->setBounds(20+k*tabWidth,120,tabWidth-6,18);
+    int tabWidth=(getWidth()-40)/9;for(int k=0;k<9;++k) tabs[size_t(k)].setBounds(20+k*tabWidth,80,tabWidth-6,38);
+    for(int k=0;k<5;++k)moduleLeds[size_t(k)]->setBounds(20+(k==4?8:k)*tabWidth,120,tabWidth-6,18);
     transportView->setBounds(20,142,getWidth()-40,34);
-    rackSelector.setBounds(getWidth()-232,180,212,32);
+    harmonyView->setBounds(20,178,getWidth()-40,28);
+    rackSelector.setBounds(getWidth()-232,212,212,32);
     fxPower.setBounds(getWidth()-590,16,124,28);
-    viewport.setBounds(16,selected==4?218:182,getWidth()-32,getHeight()-(selected==4?262:226));
+    viewport.setBounds(16,selected==4?250:214,getWidth()-32,getHeight()-(selected==4?294:258));
     auto& page=currentPage();int w=viewport.getWidth()-18;page.setSize(w,selected==7?mixerView->requiredHeight():selected==6?composerView->requiredHeight():static_cast<Page&>(page).requiredHeight(w));page.resized();
     status.setBounds(20,getHeight()-36,getWidth()-40,26);
 }
 void BassAmbientEditor::timerCallback() {
+    const int model=int(processor.state.getRawParameterValue("model")->load());if(model!=lastBassModel){lastBassModel=model;if(selected==0)resized();}
     for(auto& led:moduleLeds)led->repaint();
     int root=processor.rootDisplay.load();float level=processor.peak.load();
     juce::String note=root<0?"--":juce::MidiMessage::getMidiNoteName(root,true,true,3);
@@ -345,5 +353,6 @@ void BassAmbientEditor::timerCallback() {
     const juce::String learn=processor.isLearningMidi()?"    |    MIDI LEARN: move a CC controller":"";
     status.setText("MIDI root: "+note+"    |    Peak: "+db+" dBFS    |    FX buffers: "+juce::String(double(processor.fxBytes.load())/1048576,1)+" MB    |    Right-click: default / Ctrl+right: MIDI Learn"+learn,juce::dontSendNotification);
     for(int k=2;k<5;++k) pages[size_t(k)]->updateOrder();
+    pages[8]->updateOrder();pages[9]->updateOrder();pages[11]->updateOrder();
     pages[6]->refreshGrid();
 }

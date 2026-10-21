@@ -39,7 +39,7 @@ int main() {
         line.push(1);
         check(std::isfinite(line.read(std::nextafter(1.0,2.0))),"fractional delay wrap boundary");
     }
-    for(double sr:{44100.0,48000.0,96000.0}) for(int model=0;model<3;++model) {
+    for(double sr:{44100.0,48000.0,96000.0}) for(int model=0;model<4;++model) {
         Instrument s;s.prepare(sr);p=Parameters{};p.model=model;p.direct=true;double ppq=0;
         s.beginBlock(0,120,true);s.noteOn(36,1,1,p,0);
         check(energy(s,p,int(sr*.3),sr,ppq)>.001,"audible bass model");

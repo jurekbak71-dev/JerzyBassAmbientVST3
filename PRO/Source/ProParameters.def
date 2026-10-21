@@ -55,3 +55,28 @@ BOOL(separateOutputs,"Separate mixer outputs",13)
 BOOL(midiPlayback,"Play imported MIDI parts",13)
 
 #include "MixerParameters.def"
+
+FLOAT(arpFX,0,1,1,"Arpeggio FX amount",4)
+FLOAT(drumsFX,0,1,1,"Drums FX amount",4)
+
+CHOICE(guitarArticulation,"Guitar articulation",0,"Finger|Pick|Slap")
+FLOAT(guitarTone,0,1,1,"Guitar string tone",0)
+FLOAT(guitarDamping,0,1,1,"Guitar palm mute",0)
+FLOAT(guitarDecay,.15,8,.5,"Guitar string decay s",0)
+FLOAT(guitarPickPosition,.05,.45,1,"Guitar pluck position",0)
+
+BOOL(krell,"KRELL enabled",23)
+CHOICE(krellEngine,"Krell synthesis",23,"Evolving FM|Resonant noise|Harmonic cloud")
+FLOAT(krellLevel,0,1,1,"Krell level",23)
+FLOAT(krellCycleMin,.1,20,.4,"Krell minimum cycle",23)
+FLOAT(krellCycleMax,.2,40,.4,"Krell maximum cycle",23)
+FLOAT(krellAttack,.01,15,.4,"Krell attack",23)
+FLOAT(krellRelease,.05,25,.4,"Krell release",23)
+FLOAT(krellCutoff,40,18000,.3,"Krell cutoff",23)
+FLOAT(krellResonance,0,.85,1,"Krell resonance",23)
+FLOAT(krellTimbre,0,1,1,"Krell timbre evolution",23)
+FLOAT(krellStereo,0,1,1,"Krell stereo motion",23)
+FLOAT(krellPitchRange,0,24,1,"Krell pitch range",23)
+FLOAT(krellFX,0,1,1,"Krell FX amount",4)
+BOOL(harmonyLink,"Link module roots and scale",25)
+INT(harmonyRoot,12,96,"Global root MIDI",25)

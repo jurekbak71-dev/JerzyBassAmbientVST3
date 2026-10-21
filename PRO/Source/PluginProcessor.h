@@ -48,8 +48,8 @@ public:
     void requestPanic() {panicRequested=true;}
     void setParameterValue(const juce::String& id,float value);
 
-    std::array<std::atomic<float>,9> channelPeak{};
-    std::array<std::atomic<int>,7> inputPulse{},activePulse{};
+    std::array<std::atomic<float>,10> channelPeak{};
+    std::array<std::atomic<int>,8> inputPulse{},activePulse{};
     std::atomic<double> tempoDisplay{120},beatDisplay{0},clockBarBeats{4};
     std::atomic<int> clockStatus{0};
     void transport(bool play);
@@ -77,8 +77,8 @@ private:
     double composerOrigin=0,previousComposerBeat=-1,lastComposerPPQ=-1;
     bool wasComposerPlaying=false,wasSongMode=false;
     jerzy::Parameters sectionPatch,lastControlSnapshot;
-    std::array<double,7> tailUntil{};
-    std::array<bool,7> previousTracks{};
+    std::array<double,8> tailUntil{};
+    std::array<bool,8> previousTracks{};
     void serviceComposer();
     void adoptComposer();
     jerzy::Parameters composerSample(const jerzy::Parameters&,double,double,bool,int,int);

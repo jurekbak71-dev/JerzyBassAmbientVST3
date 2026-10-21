@@ -1,3 +1,5 @@
+> PRO 0.6: see START_PL.md and PERFORMANCE.md for linked harmony, the eighth Krell part and six FX racks.
+
 # Composer / Arranger — PRO 0.4.0
 
 ## Pierwsze uruchomienie

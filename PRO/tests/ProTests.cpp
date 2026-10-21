@@ -48,6 +48,12 @@ int main(){try{
     Parameters harmonic;harmonic.autoPlay=true;harmonic.autoHarmony=1;harmonic.harmonyBars=1;harmonic.fxEnabled=false;
     Instrument progression;progression.prepare(48000);progression.next(harmonic,0);const int firstRoot=progression.currentRoot();progression.next(harmonic,4);
     require(firstRoot!=progression.currentRoot(),"generative harmonic changes follow bars");
+    for(int engine=0;engine<3;++engine){Parameters k;k.bass=k.pad=k.arp=k.drums=false;k.krell=true;k.krellEngine=engine;k.krellAttack=.01;k.krellRelease=.1;k.krellCycleMin=.1;k.krellCycleMax=.3;k.autoPlay=true;k.fxEnabled=false;Instrument synth;synth.prepare(48000);require(render(synth,k,24000)>.01,"each independent Krell synthesis engine is audible");}
+    {Parameters style;style.density=1;style.movement=1;style.fill=style.variation=style.humanize=0;std::array<int,4> signatures{};
+        for(int kind=0;kind<4;++kind){style.style=10+kind;for(int step=0;step<16;++step){const auto a=makeStep(style,step,16),b=makeStep(style,step,16);require(a.degree==b.degree&&a.rest==b.rest&&a.semitones==b.semitones,"rock-family generators are repeatable");signatures[size_t(kind)]+=(step+1)*(a.rest?0:1+a.degree*7+a.semitones*13);}}
+        for(int a=0;a<4;++a)for(int b=a+1;b<4;++b)require(signatures[size_t(a)]!=signatures[size_t(b)],"Rock Metal Punk Blues have distinct musical patterns");
+    }
+    {Parameters guitar;guitar.model=3;guitar.bassAttack=.001;guitar.bassDecay=.01;guitar.bassSustain=1;guitar.guitarDamping=0;Parameters muted=guitar;muted.guitarDamping=1;BassVoice openVoice,mutedVoice;openVoice.prepare(48000);mutedVoice.prepare(48000);openVoice.note(28,1,false,false);mutedVoice.note(28,1,false,false);double openEnergy=0,mutedEnergy=0;for(int i=0;i<30000;++i){const auto a=openVoice.next(guitar,0),b=mutedVoice.next(muted,0);require(std::isfinite(a)&&std::isfinite(b),"finite bass guitar strings");if(i>20000){openEnergy+=a*a;mutedEnergy+=b*b;}}require(openEnergy>.000001&&mutedEnergy<openEnergy*.3,"palm mute damps the bass guitar string decay");}
     auto benchmark=[](bool enabled){Parameters params;params.autoPlay=true;params.fxEnabled=false;params.bass=params.pad=params.arp=params.drums=enabled;params.padAttack=.1;
         Instrument engine;engine.prepare(48000);volatile double sink=0;const auto begin=std::chrono::steady_clock::now();
         for(int i=0;i<24000;++i){const auto sample=engine.next(params,double(i)/24000);sink+=sample.l+sample.r;}

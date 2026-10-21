@@ -33,6 +33,21 @@ public:
     void resized() override {clock.setBounds(0,2,170,30);tempo.setBounds(178,2,110,30);play.setBounds(296,2,66,30);stop.setBounds(368,2,66,30);tap.setBounds(440,2,58,30);status.setBounds(508,2,getWidth()-508,30);}
 };
 
+class HarmonyView final : public juce::Component {
+    juce::Slider root;juce::ComboBox scale;juce::ToggleButton link{"LINK ROOT + SCALE"};juce::Label label,info;
+    juce::AudioProcessorValueTreeState::SliderAttachment rootAttachment;
+    juce::AudioProcessorValueTreeState::ComboBoxAttachment scaleAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment linkAttachment;
+public:
+    explicit HarmonyView(BassAmbientProcessor& p):rootAttachment(p.state,"harmonyRoot",root),scaleAttachment(p.state,"scale",scale),linkAttachment(p.state,"harmonyLink",link){
+        label.setText("HARMONY / ROOT",juce::dontSendNotification);info.setText("LINK: generated parts follow Bass roots; MANUAL notes stay exact",juce::dontSendNotification);
+        root.setSliderStyle(juce::Slider::IncDecButtons);root.setTextBoxStyle(juce::Slider::TextBoxLeft,false,66,26);root.textFromValueFunction=[](double v){return juce::MidiMessage::getMidiNoteName(int(v),true,true,4);};root.valueFromTextFunction=[](const juce::String& text){for(int n=12;n<=96;++n)if(juce::MidiMessage::getMidiNoteName(n,true,true,4).equalsIgnoreCase(text.trim()))return double(n);return 36.0;};root.updateText();root.setTooltip("Shared root MIDI note. C2 = MIDI 36. LINK applies it to generators, not MANUAL notes.");
+        scale.addItemList({"Major","Minor","Dorian","Harmonic minor","Minor pentatonic"},1);scale.setSelectedId(p.readParameters().scale+1,juce::dontSendNotification);
+        for(auto* c:std::initializer_list<juce::Component*>{&root,&scale,&link,&label,&info})addAndMakeVisible(*c);
+    }
+    void resized() override {label.setBounds(0,0,138,28);root.setBounds(142,0,108,28);scale.setBounds(260,0,165,28);link.setBounds(435,0,190,28);info.setBounds(635,0,getWidth()-635,28);}
+};
+
 class MixerView final : public juce::Component,private juce::Timer {
     using SA=juce::AudioProcessorValueTreeState::SliderAttachment;
     using BA=juce::AudioProcessorValueTreeState::ButtonAttachment;
@@ -41,7 +56,7 @@ class MixerView final : public juce::Component,private juce::Timer {
         juce::Label title;juce::Slider fader,pan,delay,reverb;juce::ToggleButton mute{"M"},solo{"S"},power{"POWER"};
         std::unique_ptr<SignalLeds> leds;
     };
-    std::array<Strip,7> strips;juce::Slider master,delayReturn,reverbReturn,feedback,room;
+    std::array<Strip,8> strips;juce::Slider master,delayReturn,reverbReturn,feedback,room;
     juce::ToggleButton drumsPower{"DRUMS"},limiter{"LIMITER"},split{"SPLIT OUT"},fx{"FX POWER"},delayPower{"DELAY"},reverbPower{"REVERB"},sceneRecall{"SCENE MIX"};
     juce::ComboBox division;
     std::vector<std::unique_ptr<SA>> sliders;std::vector<std::unique_ptr<BA>> buttons;
@@ -50,21 +65,21 @@ class MixerView final : public juce::Component,private juce::Timer {
     void bind(juce::ToggleButton& button,const juce::String& id){addAndMakeVisible(button);button.setComponentID(id);button.addMouseListener(this,false);buttons.push_back(std::make_unique<BA>(processor.state,id,button));}
 public:
     explicit MixerView(BassAmbientProcessor& p):processor(p){
-        for(int t=0;t<7;++t){auto& s=strips[size_t(t)];const auto prefix="mix"+juce::String(t);s.title.setText(jerzy::composer::trackNames[t],juce::dontSendNotification);s.title.setJustificationType(juce::Justification::centred);addAndMakeVisible(s.title);ProVisual::tint(s.title,ProVisual::tracks[size_t(t)]);
-            bind(s.fader,prefix+"Gain",true);bind(s.pan,prefix+"Pan");bind(s.delay,prefix+"Delay");bind(s.reverb,prefix+"Reverb");bind(s.mute,prefix+"Mute");bind(s.solo,prefix+"Solo");bind(s.power,t==0?"bass":t==1?"pad":t==2?"arp":"drum"+juce::String(t-3)+"_enabled");s.leds=std::make_unique<SignalLeds>(p,t,t);addAndMakeVisible(*s.leds);}
+        for(int t=0;t<8;++t){auto& s=strips[size_t(t)];const auto prefix="mix"+juce::String(t);s.title.setText(jerzy::composer::trackNames[t],juce::dontSendNotification);s.title.setJustificationType(juce::Justification::centred);addAndMakeVisible(s.title);ProVisual::tint(s.title,ProVisual::tracks[size_t(t)]);
+            bind(s.fader,prefix+"Gain",true);bind(s.pan,prefix+"Pan");bind(s.delay,prefix+"Delay");bind(s.reverb,prefix+"Reverb");bind(s.mute,prefix+"Mute");bind(s.solo,prefix+"Solo");bind(s.power,t==0?"bass":t==1?"pad":t==2?"arp":t==7?"krell":"drum"+juce::String(t-3)+"_enabled");s.leds=std::make_unique<SignalLeds>(p,t,t);addAndMakeVisible(*s.leds);}
         bind(master,"master",true);bind(delayReturn,"sendDelayReturn");bind(reverbReturn,"sendReverbReturn");bind(feedback,"sendFeedback");bind(room,"sendRoom");bind(drumsPower,"drums");bind(limiter,"limiter");bind(split,"separateOutputs");bind(fx,"fxEnabled");bind(delayPower,"sendDelayPower");bind(reverbPower,"sendReverbPower");bind(sceneRecall,"sceneMixer");division.addItemList({"1/4","1/8","1/16","1/32","1/8T","1/16T","1/16D"},1);addAndMakeVisible(division);choice=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.state,"sendDivision",division);startTimerHz(25);
     }
     void mouseDown(const juce::MouseEvent& e) override {if(!e.mods.isRightButtonDown())return;const auto id=e.eventComponent->getComponentID();if(id.isEmpty())return;if(e.mods.isCtrlDown())processor.learnMidi(id);else if(auto* p=processor.state.getParameter(id))p->setValueNotifyingHost(p->getDefaultValue());}
     int requiredHeight() const {return 700;}
     void timerCallback() override {for(auto& s:strips)s.leds->repaint();repaint();}
-    void resized() override {const int cw=(getWidth()-24)/8;
-        for(int t=0;t<7;++t){auto& s=strips[size_t(t)];int x=12+t*cw;s.title.setBounds(x,10,cw-6,26);s.leds->setBounds(x,40,cw-6,20);s.power.setBounds(x,66,cw-6,26);s.mute.setBounds(x,98,(cw-8)/2,26);s.solo.setBounds(x+cw/2,98,(cw-8)/2,26);s.pan.setBounds(x+6,148,cw-18,48);s.fader.setBounds(x+12,206,cw-44,230);s.delay.setBounds(x+6,466,cw-18,50);s.reverb.setBounds(x+6,548,cw-18,50);}
-        const int x=12+7*cw;master.setBounds(x+4,90,cw-24,340);limiter.setBounds(x,440,cw-6,28);split.setBounds(x,476,cw-6,28);fx.setBounds(x,512,cw-6,28);drumsPower.setBounds(x,548,cw-6,28);
+    void resized() override {const int cw=(getWidth()-24)/9;
+        for(int t=0;t<8;++t){auto& s=strips[size_t(t)];int x=12+t*cw;s.title.setBounds(x,10,cw-6,26);s.leds->setBounds(x,40,cw-6,20);s.power.setBounds(x,66,cw-6,26);s.mute.setBounds(x,98,(cw-8)/2,26);s.solo.setBounds(x+cw/2,98,(cw-8)/2,26);s.pan.setBounds(x+6,148,cw-18,48);s.fader.setBounds(x+12,206,cw-44,230);s.delay.setBounds(x+6,466,cw-18,50);s.reverb.setBounds(x+6,548,cw-18,50);}
+        const int x=12+8*cw;master.setBounds(x+4,90,cw-24,340);limiter.setBounds(x,440,cw-6,28);split.setBounds(x,476,cw-6,28);fx.setBounds(x,512,cw-6,28);drumsPower.setBounds(x,548,cw-6,28);
         const int rw=(getWidth()-32)/8;delayPower.setBounds(16,620,rw-6,28);delayReturn.setBounds(16+rw,616,rw-6,48);feedback.setBounds(16+2*rw,616,rw-6,48);division.setBounds(16+3*rw,620,rw-6,28);reverbPower.setBounds(16+4*rw,620,rw-6,28);reverbReturn.setBounds(16+5*rw,616,rw-6,48);room.setBounds(16+6*rw,616,rw-6,48);sceneRecall.setBounds(getWidth()-150,668,138,26);
     }
-    void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111720));const int cw=(getWidth()-24)/8;g.setFont(11);
-        auto meter=[&](int channel,int x,int y,int h){const float value=channel<9?processor.channelPeak[size_t(channel)].load():processor.peak.load();const float db=juce::jlimit(0.0f,1.0f,(juce::Decibels::gainToDecibels(std::max(value,.000001f))+60)/60);g.setColour(juce::Colour(0xff26303c));g.fillRect(x,y,10,h);g.setColour(value>=1?juce::Colour(0xffff534f):juce::Colour(0xff61e0c1));g.fillRect(x,y+h-int(db*h),10,int(db*h));};
-        for(int t=0;t<7;++t){int x=12+t*cw;g.setColour(ProVisual::tracks[size_t(t)].withAlpha(.6f));g.drawRoundedRectangle(float(x),4,float(cw-6),596,6,1);g.setColour(ProVisual::tracks[size_t(t)]);g.drawText("PAN",x,128,cw-6,18,juce::Justification::centred);g.drawText("DELAY SEND",x,444,cw-6,18,juce::Justification::centred);g.drawText("REVERB SEND",x,526,cw-6,18,juce::Justification::centred);meter(t,x+cw-26,212,194);}
-        const int x=12+7*cw;g.setColour(juce::Colours::white);g.drawText("MASTER",x,10,cw-6,26,juce::Justification::centred);meter(9,x+cw-20,96,300);meter(7,132,620,28);meter(8,720,620,28);g.setColour(juce::Colour(0xffa3afbf));g.drawText("Delay return       Feedback                         Reverb return       Size   |   Sends: post fader / post mute",16,684,getWidth()-190,16,juce::Justification::centredLeft);
+    void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111720));const int cw=(getWidth()-24)/9;g.setFont(11);
+        auto meter=[&](int channel,int x,int y,int h){const float value=channel<10?processor.channelPeak[size_t(channel)].load():processor.peak.load();const float db=juce::jlimit(0.0f,1.0f,(juce::Decibels::gainToDecibels(std::max(value,.000001f))+60)/60);g.setColour(juce::Colour(0xff26303c));g.fillRect(x,y,10,h);g.setColour(value>=1?juce::Colour(0xffff534f):juce::Colour(0xff61e0c1));g.fillRect(x,y+h-int(db*h),10,int(db*h));};
+        for(int t=0;t<8;++t){int x=12+t*cw;g.setColour(ProVisual::tracks[size_t(t)].withAlpha(.6f));g.drawRoundedRectangle(float(x),4,float(cw-6),596,6,1);g.setColour(ProVisual::tracks[size_t(t)]);g.drawText("PAN",x,128,cw-6,18,juce::Justification::centred);g.drawText("DELAY SEND",x,444,cw-6,18,juce::Justification::centred);g.drawText("REVERB SEND",x,526,cw-6,18,juce::Justification::centred);meter(t,x+cw-26,212,194);}
+        const int x=12+8*cw;g.setColour(juce::Colours::white);g.drawText("MASTER",x,10,cw-6,26,juce::Justification::centred);meter(10,x+cw-20,96,300);meter(8,132,620,28);meter(9,720,620,28);g.setColour(juce::Colour(0xffa3afbf));g.drawText("Delay return       Feedback                         Reverb return       Size   |   Sends: post fader / post mute",16,684,getWidth()-190,16,juce::Justification::centredLeft);
     }
 };

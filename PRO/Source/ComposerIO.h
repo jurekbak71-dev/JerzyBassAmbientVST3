@@ -17,7 +17,7 @@ inline juce::ValueTree patchTree(const Parameters& p){juce::ValueTree tree("Patc
 #undef CHOICE
 #undef CHOICE_DEN
     tree.setProperty("masterFX",p.masterFX,nullptr);
-    for(int rack=0;rack<3;++rack){const auto& fx=rack==0?static_cast<const FXParameters&>(p):rack==1?p.padRack:p.masterRack;juce::ValueTree child("FX");
+    for(int rack=0;rack<6;++rack){const auto& fx=rack==0?static_cast<const FXParameters&>(p):rack==1?p.padRack:rack==2?p.masterRack:rack==3?p.arpRack:rack==4?p.drumsRack:p.krellRack;juce::ValueTree child("FX");
 #define BOOL(f,l,g) child.setProperty(#f,fx.f,nullptr);
 #define FLOAT(f,a,b,s,l,g) child.setProperty(#f,fx.f,nullptr);
 #define CHOICE(f,l,g,c) child.setProperty(#f,fx.f,nullptr);
@@ -45,7 +45,7 @@ inline Parameters readPatch(const juce::ValueTree& tree){Parameters p;if(!tree.i
 #undef CHOICE
 #undef CHOICE_DEN
     p.masterFX=boundedPatchValue(tree.getProperty("masterFX",p.masterFX),p.masterFX,0,1);int rack=0,lane=0;
-    for(const auto& child:tree){if(child.hasType("FX")&&rack<3){auto& fx=rack==0?static_cast<FXParameters&>(p):rack==1?p.padRack:p.masterRack;++rack;
+    for(const auto& child:tree){if(child.hasType("FX")&&rack<6){auto& fx=rack==0?static_cast<FXParameters&>(p):rack==1?p.padRack:rack==2?p.masterRack:rack==3?p.arpRack:rack==4?p.drumsRack:p.krellRack;++rack;
 #define BOOL(f,l,g) fx.f=bool(child.getProperty(#f,fx.f));
 #define FLOAT(f,a,b,s,l,g) fx.f=boundedPatchValue(child.getProperty(#f,fx.f),fx.f,a,b);
 #define CHOICE(f,l,g,c) fx.f=int(child.getProperty(#f,fx.f));

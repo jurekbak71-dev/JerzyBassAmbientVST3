@@ -1,4 +1,6 @@
-# PRO 0.5 performance update
+# PRO 0.6 performance update
+
+[Instrukcja po polsku](docs/START_PL.md): nowe racki FX, Bass Guitar, Rock/Metal/Punk/Blues, LINK ROOT + SCALE i niezależny KRELL.
 
 See [PERFORMANCE.md](docs/PERFORMANCE.md) for MANUAL/MODULE, Mixer, LEDs and clock controls.
 

@@ -1,4 +1,4 @@
-# PRO 0.5 — Composer, Mixer and Clock
+# PRO 0.6 — Composer, Mixer and Clock
 
 ## Start music in the standalone
 
@@ -24,15 +24,15 @@ MIDI scene/song/pattern exports contain the resulting notes, not only root instr
 
 ## Mixer
 
-The MIXER page has seven channel strips: Bass, Ambient, Arp, Kick, Snare, Hi-hat and Aux. Each strip has POWER, Mute, Solo, stereo balance, a vertical fader, meter and post-fader Delay/Reverb sends. Mute and Solo also mute new send input. Existing return tails can continue; use return power or FX POWER to cut/release the associated buffers.
+The MIXER page has eight channel strips: Bass, Ambient, Arp, Kick, Snare, Hi-hat Aux and Krell. Each strip has POWER, Mute, Solo, stereo balance, a vertical fader, meter and post-fader Delay/Reverb sends. Mute and Solo also mute new send input. Existing return tails can continue; use return power or FX POWER to cut/release the associated buffers.
 
 POWER stops that instrument's DSP. Mute keeps its voices running so it can return in time. The global DRUMS power switch still controls all four drum voices. Right-click resets a mixer control; Ctrl+right-click arms MIDI Learn. All mixer parameters are host-automatable and are saved in plugin state.
 
-Delay and Reverb have separate power switches, returns, feedback/time division and room size. FX POWER disables instrument racks, master rack and both sends. The master fader and soft limiter control MAIN. Stems and returns are post master level, before MAIN's master FX/DC filter/limiter: leave headroom on the host mixer.
+Delay and Reverb have separate power switches, returns, feedback/time division and room size. FX POWER is the global authority for instrument racks, master rack and both sends; a scene saved with FX off cannot silently override it. With SCENE MIX off, the visible MASTER rack and its amount apply globally. The master fader and soft limiter control MAIN. Stems and returns are post master level, before MAIN's master FX/DC filter/limiter: leave headroom on the host mixer.
 
 SCENE MIX recalls mixer settings from each scene patch (save them with CAPTURE SOUND). When off, the visible mixer is a global performance mix across all scenes. With SCENE MIX enabled the stored scene settings override global strip faders; turn it off to mix manually.
 
-In FL Studio enable the plugin wrapper's extra output buses and map them to mixer inserts. SPLIT OUT removes connected stems/returns from MAIN, avoiding doubled audio; outputs that are not connected continue to MAIN. The ten stereo buses are MAIN, Bass, Pad, Arp, Kick, Snare, Hi-hat, Aux, Delay Return, Reverb Return. The standalone normally uses MAIN stereo.
+In FL Studio enable the plugin wrapper's extra output buses and map them to mixer inserts. SPLIT OUT removes connected stems/returns from MAIN, avoiding doubled audio; outputs that are not connected continue to MAIN. The eleven stereo buses are MAIN, Bass, Pad, Arp, Kick, Snare, Hi-hat, Aux, Delay Return, Reverb Return, Krell. The standalone normally uses MAIN stereo.
 
 ## Activity LEDs
 
@@ -41,3 +41,23 @@ Module tabs and mixer strips show IN (yellow note/control activity), ACT (green 
 ## Validation boundaries
 
 Automated DSP/host/GUI tests exercise root gates, transposition, manual bypass, mixer mute/solo/pan, multi-output routing, MIDI clock and state. Actual FL Studio wrapper routing, real audio/MIDI devices and Raspberry Pi 4 hardware require testing on those systems. This release does not add a Raspberry Pi hardware build or realtime MIDI output; use MIDI export.
+
+## Six FX racks (0.6)
+
+The FX rack selector has BASS, AMBIENT, MASTER, ARPEGGIO, DRUMS and KRELL. Each has independent effect settings, order and FX amount. Raise Arpeggio FX amount or Drums FX amount above zero to engage the new racks. They process the instrument before the mixer and send effects. DRUMS shares settings across four independent voice processors, preserving Kick/Snare/Hi-hat/Aux isolation on the separate FL mixer outputs. Disabling FX power, the instrument or its FX amount releases the associated large buffers through the maintenance worker.
+
+With SCENE MIX off, MASTER, ARPEGGIO and DRUMS racks follow the visible global controls. With SCENE MIX on they recall the scene patch. FX POWER always remains a global switch; a saved scene FX OFF no longer blocks live mixer sends when FX POWER is ON.
+
+## Bass Guitar (0.6)
+
+Select Bass Guitar in the BASS model menu. This is a procedural plucked-string waveguide, not a sampled guitar. Finger/Pick/Slap change excitation; string tone, palm mute, decay and pluck position control the string. The existing AMP envelope, filter, drive, MIDI velocity, pitch bend and glide still apply. Both MANUAL notes and MODULE-generated bass lines can play it. String storage is allocated during prepare, with no allocation on note-on.
+
+Bass styles now include Rock (eighth-note drive and fifths), Metal (gallops and short gates), Punk (driving roots/fifths), and Blues (walking major-third/fifth/sixth/flat-seventh vocabulary). Use 1/16 division for the base grid; set Swing near 0.6 for blues shuffle. Density, movement, fills and humanisation remain available. Blues deliberately adds idiomatic chromatic notes outside the selected scale.
+
+## Linked harmony and independent Krell (0.6)
+
+The always-visible HARMONY panel provides ROOT and SCALE. LINK is optional and defaults off for existing independent parts. With LINK on, generated Ambient, Arp and Krell parts follow the Bass root gates and share the global scale. Changing ROOT transposes generated root gates and scene progression relative to the Bass/scene anchor. MANUAL pitches remain unchanged. Writing the first Bass root on the Composer grid, or playing a MIDI bass root, updates the shared ROOT while LINK is on. Chord qualities explicitly written in a scene progression remain that progression's harmonic instructions.
+
+KRELL is an independent instrument and tab, with evolving FM, resonant noise and harmonic-cloud synthesis, separate attack/release, cycle range, pitch range, stereo motion, power, FX rack, Composer clip, MIDI channel 4 and mixer strip. Its output bus is appended after the existing Delay/Reverb buses to preserve previous bus indices. The Ambient legacy Krell mode remains available for compatibility. Select Independent Krell from Factory scenes and press PLAY for a quick standalone audition; inside Composer enable the KRELL clip in the scene. CC34 controls Krell power by default.
+
+Bass Guitar Groove, Rock/Metal/Punk/Blues Bass Guitar presets and Independent Krell are included in the factory menu.

@@ -11,6 +11,7 @@ Instrument identity uses one shared RGB palette in `Source/VisualPalette.h`.
 | Snare | 255, 112, 155 | #FF709B |
 | Hi-hat | 114, 207, 255 | #72CFFF |
 | Aux drum | 218, 178, 108 | #DAB26C |
+| Krell | 170, 235, 118 | #AAEB76 |
 
 Page tabs, parameter labels, Composer track buttons, notes and scene cells share these identities. Scene cells include instrument names; colour is never the only identification. Inactive cells retain coloured text on a dark background. Selection uses a stronger outline, independently of whether the clip is enabled.
 

@@ -33,6 +33,7 @@ struct Parameters : FXParameters {
     bool bass=true, pad=false, direct=false, latch=false, restart=false, evolve=false, legato=false;
     int model=0, bassWave=0, style=0, scale=1, division=2, bars=1, meter=0, numerator=4, denominator=4;
     int seed=71, chord=1, padMode=1, engine1=0, engine2=1;
+    int guitarArticulation=0;double guitarTone=.6,guitarDamping=.2,guitarDecay=2.5,guitarPickPosition=.22;
     double density=.75, movement=.4, gate=.55, swing=0, variation=.15, slide=.3, accent=.5;
     double bassLevel=.6, cutoff=1200, resonance=.35, filterEnv=.65, drive=.2;
     double bassAttack=.003, bassDecay=.25, bassSustain=.25, bassRelease=.1, glide=.09, sub=.3, pulse=.5;
@@ -42,7 +43,10 @@ struct Parameters : FXParameters {
     bool limiter=true;
     bool composerEnabled=false,composerPlaying=false,composerSongMode=true,composerLoop=false,separateOutputs=false,midiPlayback=false;
     int composerScene=1;double composerIntensity=1;
-    FXParameters padRack, masterRack;
+    FXParameters padRack, masterRack,arpRack,drumsRack,krellRack;
+    double arpFX=0,drumsFX=0,krellFX=0;
+    bool krell=false,harmonyLink=false;int harmonyRoot=36,krellEngine=0;
+    double krellLevel=.35,krellCycleMin=.6,krellCycleMax=5,krellAttack=.5,krellRelease=1.5,krellCutoff=3200,krellResonance=.2,krellTimbre=.5,krellStereo=.85,krellPitchRange=14;
     bool fxEnabled=true, autoPlay=false, arp=false, drums=false;
     int autoRoot=36, autoHarmony=0, harmonyBars=4; double internalTempo=120;
     double humanize=.2, fill=.2; int bassOctaves=2;
@@ -102,6 +106,7 @@ struct Parameters : FXParameters {
     double sendDelayReturn=.7,sendReverbReturn=.7,sendFeedback=.35,sendRoom=.7;
     int sendDivision=1,clockSource=0;
     bool sendDelayPower=true,sendReverbPower=true,transportRun=false,sceneMixer=false;
+    double mix7Gain=1,mix7Pan=0,mix7Delay=0,mix7Reverb=0;bool mix7Mute=false,mix7Solo=false;
     struct Mix { double gain,pan,delay,reverb;bool mute,solo; };
     Mix mix(int track) const {
         switch(track) {
@@ -112,6 +117,7 @@ struct Parameters : FXParameters {
         case 4:return {mix4Gain,mix4Pan,mix4Delay,mix4Reverb,mix4Mute,mix4Solo};
         case 5:return {mix5Gain,mix5Pan,mix5Delay,mix5Reverb,mix5Mute,mix5Solo};
         case 6:return {mix6Gain,mix6Pan,mix6Delay,mix6Reverb,mix6Mute,mix6Solo};
+        case 7:return {mix7Gain,mix7Pan,mix7Delay,mix7Reverb,mix7Mute,mix7Solo};
         default:return {1,0,0,0,false,false};
         }
     }
@@ -175,7 +181,7 @@ struct Ladder {
     void reset() { z.fill(0); }
 };
 
-struct Step { int degree=0, octave=0; double velocity=.8, length=.5; bool rest=false, accent=false, slide=false; };
+struct Step { int degree=0, octave=0,semitones=0; double velocity=.8, length=.5; bool rest=false, accent=false, slide=false; };
 inline double divisionBeats(int i) {
     constexpr double v[]{1,.5,.25,.125,1.0/3,1.0/6,.375};
     return v[clamp(i,0,6)];
@@ -213,7 +219,7 @@ inline Step makeStep(const Parameters& p,int64_t index,int count) {
     s.slide=unit(salt,k*11+6)<p.slide && !s.rest;
     s.velocity=s.accent?1.0:(style==3?.45+.4*unit(salt,k*11+7):.75);
     s.length=clamp(p.gate*(style==3?.65:1.0),.03,1.0);
-    if(p.style>=5) {
+    if(p.style>=5&&p.style<=9) {
         static constexpr int extra[5][16]={
             {0,0,4,0,0,2,0,6,0,0,4,0,2,0,6,4},
             {0,0,0,4,0,0,2,0,0,4,0,0,6,0,2,0},
@@ -224,6 +230,18 @@ inline Step makeStep(const Parameters& p,int64_t index,int count) {
         s.rest=unit(salt,k*11+4)>p.density*(m%4==0?1.0:(p.style==8?.45:.85));
         s.slide=unit(salt,k*11+6)<p.slide;
         s.length=clamp(p.gate*(p.style==7?.5:1.0),.03,1.0);
+    }
+    if(p.style>=10){
+        static constexpr int rock[]{0,0,0,0,4,0,0,4,0,0,0,0,4,4,2,4};
+        static constexpr int metal[]{0,0,0,0,0,0,1,0,0,0,0,0,4,3,1,0};
+        static constexpr int punk[]{0,0,0,0,0,0,4,4,0,0,0,0,4,4,4,4};
+        static constexpr int blues[]{0,0,4,4,7,7,9,9,10,10,9,9,7,7,6,3};
+        const bool pulse=p.style==11?(m%4!=1):(m%2==0);
+        s.rest=!pulse||unit(salt,k*11+4)>p.density;
+        s.degree=unit(salt,k*11+1)<p.movement?(p.style==10?rock[m]:p.style==11?metal[m]:p.style==12?punk[m]:0):0;
+        s.semitones=p.style==13&&unit(salt,k*11+1)<p.movement?blues[m]:0;s.octave=0;
+        s.slide=false;s.accent=m%4==0;s.velocity=s.accent?1:.82;
+        s.length=clamp(p.gate*(p.style==11?.55:p.style==12?.85:1.0),.03,1.0);
     }
     if(k>=count-std::max(1,count/4)&&unit(salt,k*17+71)<p.fill) {
         s.rest=false;s.degree+=int(unit(salt,k*17+72)*4);s.length*=.65;
@@ -237,14 +255,34 @@ class BassVoice {
     double rate=48000, pitch=36,target=36, elapsed=0, filterLevel=0, velocity=.8;
     bool connected=false, accented=false;
     Oscillator o1,o2,subOsc; Ladder filter; Envelope env;
+    std::vector<double> string;size_t stringCursor=0;uint32_t plucks=0;bool pluckPending=true;double stringPrevious=0,guitarBody=0;
+    double guitar(const Parameters& p,double frequency){
+        const double damping=.5*(1-p.guitarTone*.8);
+        const double delay=clamp(rate/frequency-damping,2.0,double(string.size()-2));
+        if(pluckPending){const int period=std::max(2,int(std::lround(delay)));const int pick=std::max(1,int(period*p.guitarPickPosition));const uint32_t seed=hash(uint32_t(p.seed)^++plucks);
+            for(size_t i=0;i<string.size();++i){const int phase=int(i%size_t(period));const double a=unit(seed,uint32_t(phase))*2-1,b=unit(seed,uint32_t((phase+pick)%period))*2-1;string[i]=(a-b)*.55;}
+            stringCursor=0;stringPrevious=guitarBody=0;pluckPending=false;
+        }
+        double position=double(stringCursor)-delay;if(position<0)position+=double(string.size());if(position>=double(string.size()))position=0;
+        const size_t i=size_t(position);const double fraction=position-double(i);const double value=string[i]*(1-fraction)+string[(i+1)%string.size()]*fraction;
+        const double decay=p.guitarDecay*(1-p.guitarDamping*.92);
+        const double feedback=std::exp(-6.907755/(std::max(.08,decay)*frequency));
+        string[stringCursor]=((1-damping)*value+damping*stringPrevious)*feedback;stringPrevious=value;stringCursor=(stringCursor+1)%string.size();
+        guitarBody+=(value-guitarBody)*(1-std::exp(-2*pi*180/rate));
+        const double attack=p.guitarArticulation==0?.08:p.guitarArticulation==1?.22:.5;
+        const double noise=(unit(uint32_t(p.seed)+plucks,uint32_t(elapsed*rate))*2-1)*std::exp(-elapsed/(p.guitarArticulation==2?.012:.004))*attack;
+        double sound=value*(p.guitarArticulation==0?.8:1.1)+guitarBody*.45+noise;
+        sound=filter.process(sound,p.cutoff*std::exp2(p.filterEnv*.7),p.resonance*.4,rate,p.drive*.5);
+        elapsed+=1/rate;return sound;
+    }
 public:
     bool active() const {return env.active();}
 
-    void prepare(double sr) { rate=sr; env.prepare(sr); reset(); }
-    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false; }
+    void prepare(double sr) { rate=sr;string.assign(size_t(std::ceil(sr/hz(12)))+8,0);env.prepare(sr);reset(); }
+    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false;pluckPending=true;stringCursor=0;stringPrevious=guitarBody=0;plucks=0; }
     void note(int n,double v,bool legato,bool accent) {
         target=clamp(double(n),12.0,108.0);velocity=v;accented=accent;
-        if(!legato || !env.active()) { pitch=target;env.on();filterLevel=1;elapsed=0; }
+        if(!legato || !env.active()) { pitch=target;env.on();filterLevel=1;elapsed=0;pluckPending=true; }
         connected=legato;
     }
     void off() { env.off();connected=false; }
@@ -254,6 +292,7 @@ public:
         double glideTime=connected?p.glide:.001;
         pitch+=(target-pitch)*(1-std::exp(-1/(rate*std::max(glideTime,.001))));
         filterLevel*=std::exp(-1/(rate*std::max(.025,p.bassDecay*(accented?1.4:1))));
+        if(p.model==3)return guitar(p,hz(pitch+bend))*amp*velocity*.9;
         double result=0;
         for(int i=0;i<2;++i) {
             const double f=hz(pitch+bend);
@@ -470,12 +509,12 @@ class Instrument {
     uint32_t voiceSerial=0;
     BassVoice bass;
     std::array<PadVoice,12> pads;
-    ManagedRack bassRack,padRack,masterRack,delaySendRack,reverbSendRack;
+    ManagedRack bassRack,padRack,masterRack,arpRack,krellRack;std::array<ManagedRack,4> drumRacks;ManagedRack delaySendRack,reverbSendRack;
     std::array<Stereo,2> returns{};
-    Arpeggiator arpeggiator;DrumMachine drumMachine;
-    std::array<Stereo,7> stems{};uint32_t externalBassId=0;
+    Arpeggiator arpeggiator;DrumMachine drumMachine;KrellSynth krellSynth;
+    std::array<Stereo,8> stems{};uint32_t externalBassId=0;
     std::array<int,128> arpNotes{};int arpNoteCount=0;
-    bool previousArp=false,previousDrums=false;int midiRoot=-1;
+    bool previousArp=false,previousDrums=false,previousKrell=false;int midiRoot=-1;
     double dcInL=0,dcInR=0,dcOutL=0,dcOutR=0;
     void setupKrell(PadVoice& v,const Parameters& p,uint32_t id) {
         const double lo=std::min(p.krellMin,p.krellMax),hi=std::max(p.krellMin,p.krellMax);
@@ -532,12 +571,12 @@ class Instrument {
         } else if(latest) velocity=latest->velocity;
     }
 public:
-    void prepare(double sr) { rate=sr;arpeggiator.prepare(sr);drumMachine.prepare(sr);bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);delaySendRack.prepare(sr);reverbSendRack.prepare(sr);reset(); }
+    void prepare(double sr) { rate=sr;arpeggiator.prepare(sr);drumMachine.prepare(sr);krellSynth.prepare(sr);bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);arpRack.prepare(sr);krellRack.prepare(sr);for(auto& rack:drumRacks)rack.prepare(sr);delaySendRack.prepare(sr);reverbSendRack.prepare(sr);reset(); }
     void reset() {
-        arpeggiator.reset();drumMachine.reset();arpNoteCount=0;midiRoot=-1;
+        arpeggiator.reset();drumMachine.reset();krellSynth.reset();arpNoteCount=0;midiRoot=-1;
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
         for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.c={};v.d={};v.shimmer={};v.age=0; }
-        bassRack.reset();padRack.reset();masterRack.reset();delaySendRack.reset();reverbSendRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
+        bassRack.reset();padRack.reset();masterRack.reset();arpRack.reset();krellRack.reset();for(auto& rack:drumRacks)rack.reset();delaySendRack.reset();reverbSendRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
         anchor=padClock=0;gateUntil=-1;havePosition=wasPlaying=false;voiceSerial=0;dcInL=dcInR=dcOutL=dcOutR=0;
         previousBass=true;previousPad=false;previousDirect=false;
     }
@@ -546,18 +585,21 @@ public:
         fx.delayMix=fx.reverbMix=1;fx.feedback=p.sendFeedback;fx.delayDivision=p.sendDivision;fx.delayType=0;fx.reverbSize=p.sendRoom;return fx;
     }
     void configureResources(const Parameters& p) {
-        bool delayNeeded=false,reverbNeeded=false;for(int t=0;t<7;++t){delayNeeded|=p.mix(t).delay>0;reverbNeeded|=p.mix(t).reverb>0;}
-        const bool source=p.bass||p.pad||p.arp||p.drums;
+        bool delayNeeded=false,reverbNeeded=false;for(int t=0;t<8;++t){delayNeeded|=p.mix(t).delay>0;reverbNeeded|=p.mix(t).reverb>0;}
+        const bool source=p.bass||p.pad||p.arp||p.drums||p.krell;
         delaySendRack.configure(sendPatch(p,true),source&&delayNeeded&&p.fxEnabled&&p.sendDelayPower&&p.sendDelayReturn>0);
         reverbSendRack.configure(sendPatch(p,false),source&&reverbNeeded&&p.fxEnabled&&p.sendReverbPower&&p.sendReverbReturn>0);
+        krellRack.configure(p.krellRack,p.fxEnabled&&p.krell&&p.krellFX>0);
+        arpRack.configure(p.arpRack,p.fxEnabled&&p.arp&&p.arpFX>0);
+        for(int lane=0;lane<4;++lane)drumRacks[size_t(lane)].configure(p.drumsRack,p.fxEnabled&&p.drums&&p.drumSounds[size_t(lane)].enabled&&p.drumsFX>0);
         bassRack.configure(p,p.fxEnabled&&p.bass&&p.bassFX>0);
         padRack.configure(p.padRack,p.fxEnabled&&p.pad&&p.padFX>0);
-        masterRack.configure(p.masterRack,p.fxEnabled&&p.masterFX>0&&(p.bass||p.pad||p.arp||p.drums));
+        masterRack.configure(p.masterRack,p.fxEnabled&&p.masterFX>0&&(p.bass||p.pad||p.arp||p.drums||p.krell));
     }
-    void serviceResources() {bassRack.maintenance();padRack.maintenance();masterRack.maintenance();delaySendRack.maintenance();reverbSendRack.maintenance();}
-    size_t fxMemoryBytes() const {return bassRack.memoryBytes()+padRack.memoryBytes()+masterRack.memoryBytes()+delaySendRack.memoryBytes()+reverbSendRack.memoryBytes();}
+    void serviceResources() {bassRack.maintenance();padRack.maintenance();masterRack.maintenance();arpRack.maintenance();krellRack.maintenance();for(auto& rack:drumRacks)rack.maintenance();delaySendRack.maintenance();reverbSendRack.maintenance();}
+    size_t fxMemoryBytes() const {size_t drums=0;for(const auto& rack:drumRacks)drums+=rack.memoryBytes();return drums+arpRack.memoryBytes()+krellRack.memoryBytes()+bassRack.memoryBytes()+padRack.memoryBytes()+masterRack.memoryBytes()+delaySendRack.memoryBytes()+reverbSendRack.memoryBytes();}
     const std::array<Stereo,2>& returnOutputs() const {return returns;}
-    const std::array<Stereo,7>& stemOutputs() const {return stems;}
+    const std::array<Stereo,8>& stemOutputs() const {return stems;}
     void externalNote(int track,int note,double velocity,double pan,uint32_t id,bool on,bool accent=false,bool slide=false,const Parameters* patch=nullptr) {
         if(track==0){if(on){externalBassId=id;bass.note(note,velocity,slide,accent);}else if(externalBassId==id)bass.off();}
         else if(track==1){if(!on){for(auto& v:pads)if(v.eventId==id)v.off();return;}
@@ -566,17 +608,18 @@ public:
             voice->start(note,pan,hash(id),velocity);voice->eventId=id;
             if(patch&&patch->padMode==2)setupKrell(*voice,*patch,id);
         }else if(track==2){if(on)arpeggiator.trigger(note,velocity,pan,std::numeric_limits<double>::max(),id);else arpeggiator.noteOff(id);}
+        else if(track==7){if(on)krellSynth.trigger(note,velocity,pan,id);else krellSynth.noteOff(id);}
         else if(on&&track>=3&&track<7)drumMachine.trigger(track-3,velocity);
     }
     int drumPosition() const {return drumMachine.stepDisplay();}
     int arpNoteDisplay() const {return arpeggiator.noteDisplay();}
-    std::array<bool,7> activeTracks() const {
-        std::array<bool,7> result{};result[0]=bass.active();for(const auto& v:pads)result[1]|=v.env.active();result[2]=arpeggiator.active();
+    std::array<bool,8> activeTracks() const {
+        std::array<bool,8> result{};result[7]=krellSynth.active();result[0]=bass.active();for(const auto& v:pads)result[1]|=v.env.active();result[2]=arpeggiator.active();
         for(int i=0;i<4;++i)result[size_t(i+3)]=drumMachine.active(i);return result;
     }
     int currentRoot() const {return root;}
     int64_t stepPosition() const { return lastStep; }
-    void allOff() { arpeggiator.reset();drumMachine.reset();midiRoot=-1;arpNoteCount=0;held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
+    void allOff() { arpeggiator.reset();drumMachine.reset();krellSynth.reset();midiRoot=-1;arpNoteCount=0;held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
     void noteOn(int note,int channel,double v,const Parameters& p,double ppq) {
         if(note<0||note>127||channel<1||channel>16) return;
         if(v<=0) { noteOff(note,channel,p,ppq);return; }
@@ -615,13 +658,13 @@ public:
     }
     Stereo next(const Parameters& p,double ppq,int hostNumerator=4,int hostDenominator=4,bool external=false,unsigned splitMask=0) {
         if(!external) {
-        int generatedRoot=clamp(p.autoRoot,24,84);
+        int generatedRoot=clamp(p.harmonyLink?p.harmonyRoot:p.autoRoot,12,96);const int baseRoot=generatedRoot;
         if(p.autoPlay&&p.autoHarmony>0) {
             const double beatsPerBar=double(p.meter?p.numerator:hostNumerator)*4/std::max(1,p.meter?p.denominator:hostDenominator);
             const auto section=int64_t(std::floor(ppq/(std::max(1,p.harmonyBars)*beatsPerBar)));
             static constexpr int changes[3][4]={{0,5,3,4},{0,3,4,0},{0,4,5,3}};
             int degree=p.autoHarmony==4?int(unit(uint32_t(p.seed),uint32_t(section))*7):changes[clamp(p.autoHarmony-1,0,2)][size_t((section%4+4)%4)];
-            generatedRoot+=scaleOffset(degree,p.scale);while(generatedRoot>p.autoRoot+7)generatedRoot-=12;
+            generatedRoot+=scaleOffset(degree,p.scale);while(generatedRoot>baseRoot+7)generatedRoot-=12;
         }
         if(p.autoPlay&&root<0) {root=generatedRoot;rootChannel=1;velocity=.8;}
         if(!p.autoPlay&&midiRoot<0&&root>=0&&!p.latch) {root=-1;bass.off();for(auto& v:pads)v.off();}
@@ -644,7 +687,7 @@ public:
                 int count=std::max(1,int(std::lround(double(num)*4/std::max(1,den)*p.bars/period)));
                 auto s=makeStep(p,step,count);
                 if(!s.rest) {
-                    bass.note(root+scaleOffset(s.degree,p.scale)+12*s.octave,velocity*s.velocity,previousSlide,s.accent);
+                    bass.note(root+scaleOffset(s.degree,p.scale)+s.semitones+12*s.octave,velocity*s.velocity,previousSlide,s.accent);
                     gateUntil=ppq+period*s.length;previousSlide=s.slide;
                 } else { bass.off();previousSlide=false;gateUntil=-1; }
                 lastStep=step;
@@ -685,11 +728,14 @@ public:
         previousArp=p.arp;previousDrums=p.drums;
         Stereo arpOut{};if(p.arp)arpOut=arpeggiator.next(p,ppq,external?1:root,arpNotes.data(),arpNoteCount,bend[size_t(rootChannel-1)],!external);
         if(p.drums)drumMachine.next(p,ppq,!external&&(wasPlaying||root>=0||p.autoPlay));
-        stems={dryBass,dryPad,arpOut};
-        if(p.drums)for(int lane=0;lane<4;++lane)stems[size_t(lane+3)]=drumMachine.outputs[size_t(lane)];
-        bool solo=false;for(int t=0;t<7;++t)solo|=p.mix(t).solo;
+        if(p.fxEnabled&&p.arp&&p.arpFX>0)arpOut=arpOut*(1-p.arpFX)+arpRack.process(arpOut,p.arpRack,bpm)*p.arpFX;
+        auto krellOut=p.krell?krellSynth.next(p,root,external):Stereo{};if(previousKrell&&!p.krell)krellSynth.reset();previousKrell=p.krell;
+        if(p.fxEnabled&&p.krell&&p.krellFX>0)krellOut=krellOut*(1-p.krellFX)+krellRack.process(krellOut,p.krellRack,bpm)*p.krellFX;
+        stems={dryBass,dryPad,arpOut};stems[7]=krellOut;
+        if(p.drums)for(int lane=0;lane<4;++lane){auto drum=drumMachine.outputs[size_t(lane)];if(p.fxEnabled&&p.drumSounds[size_t(lane)].enabled&&p.drumsFX>0)drum=drum*(1-p.drumsFX)+drumRacks[size_t(lane)].process(drum,p.drumsRack,bpm)*p.drumsFX;stems[size_t(lane+3)]=drum;}
+        bool solo=false;for(int t=0;t<8;++t)solo|=p.mix(t).solo;
         Stereo out{},delayInput{},reverbInput{};
-        for(int track=0;track<7;++track){const auto mix=p.mix(track);auto& stem=stems[size_t(track)];
+        for(int track=0;track<8;++track){const auto mix=p.mix(track);auto& stem=stems[size_t(track)];
             // Balance preserves original stereo at centre, including ARP ping-pong.
             const double gain=mix.mute||(solo&&!mix.solo)?0:mix.gain;
             stem={stem.l*gain*(mix.pan>0?1-mix.pan:1),stem.r*gain*(mix.pan<0?1+mix.pan:1)};
@@ -700,12 +746,12 @@ public:
         returns={};
         if(p.fxEnabled&&p.sendDelayPower)returns[0]=delaySendRack.processWet(delayInput,sendPatch(p,true),bpm)*p.sendDelayReturn;
         if(p.fxEnabled&&p.sendReverbPower)returns[1]=reverbSendRack.processWet(reverbInput,sendPatch(p,false),bpm)*p.sendReverbReturn;
-        for(int k=0;k<2;++k){if(!(splitMask&(1U<<(7+k))))out=out+returns[size_t(k)];returns[size_t(k)]=returns[size_t(k)]*p.master;}
+        for(int k=0;k<2;++k){if(!(splitMask&(1U<<(8+k))))out=out+returns[size_t(k)];returns[size_t(k)]=returns[size_t(k)]*p.master;}
 
         if(p.fxEnabled&&p.masterFX>0) out=out*(1-p.masterFX)+masterRack.process(out,p.masterRack,bpm)*p.masterFX;
         out=out*p.master;
 
-        if(!p.bass&&!p.pad&&!p.arp&&!p.drums&&std::abs(returns[0].l)+std::abs(returns[0].r)+std::abs(returns[1].l)+std::abs(returns[1].r)<1e-15){dcInL=dcInR=dcOutL=dcOutR=0;return {};}
+        if(!p.bass&&!p.pad&&!p.arp&&!p.drums&&!p.krell&&std::abs(returns[0].l)+std::abs(returns[0].r)+std::abs(returns[1].l)+std::abs(returns[1].r)<1e-15){dcInL=dcInR=dcOutL=dcOutR=0;return {};}
         const double dcCoefficient=std::exp(-2*pi*5/rate);
         double l=out.l-dcInL+dcCoefficient*dcOutL,r=out.r-dcInR+dcCoefficient*dcOutR;
         dcInL=out.l;dcInR=out.r;dcOutL=l;dcOutR=r;

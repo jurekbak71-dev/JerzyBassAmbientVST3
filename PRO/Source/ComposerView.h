@@ -24,7 +24,7 @@ private:
     juce::Slider bars,tempo,intensity,repeat,bar,octave,velocity,notePan,gain,enter,leave,threshold;
     juce::ComboBox numerator,denominator;
     juce::ToggleButton enabled{"COMPOSER"},play{"PLAY"},songMode{"SONG"},loop{"LOOP"},split{"SPLIT OUT"},midiPlay{"MIDI PARTS"},generated{"GENERATED"},cut{"CUT TAILS"},evolve{"EVOLVE"};
-    std::array<juce::TextButton,7> tracks;
+    std::array<juce::TextButton,8> tracks;
     juce::TextButton add{"NEW"},duplicate{"VARIANT"},remove{"DELETE"},launch{"LAUNCH SCENE"},capture{"CAPTURE SOUND"},append{"+ SONG"},slotRemove{"REMOVE"},up{"<"},down{">"},freeze{"FREEZE / EDIT"},clear{"CLEAR CLIP"},exportScene{"EXPORT SCENE"},exportSong{"EXPORT SONG"},exportPack{"PATTERN PACK"},save{"SAVE"},load{"LOAD"};
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> attachments;
     std::unique_ptr<juce::FileChooser> chooser;

@@ -38,6 +38,8 @@ std::vector<ParameterSpec> parameterSpecs() {
         out.push_back({prefix+"pan",name+" pan",8+lane,0,-1,1,0,1,{}});
         for(int step=0;step<64;++step) out.push_back({prefix+"step"+juce::String(step),name+" step "+juce::String(step+1),12,2,0,127,double(p.drumGrid[size_t(lane)][size_t(step)]),1,{}});
     }
+    // Append new rack IDs after existing parameters to preserve older ordering.
+    for(const auto& prefix:juce::StringArray{"arp_","drums_","krell_"})for(auto spec:original)if(spec.group==3){spec.id=prefix+spec.id;spec.label=(prefix=="arp_"?"Arpeggio ":prefix=="drums_"?"Drums ":"Krell ")+spec.label;out.push_back(std::move(spec));}
     return out;
 }
 
@@ -62,6 +64,7 @@ BassAmbientProcessor::BassAmbientProcessor()
     generateParameter=state.getParameter("autoPlay");
     const char* switches[]{"bass","pad","arp","drums","fxEnabled","autoPlay","composerEnabled","composerPlaying","composerSongMode","composerLoop","composerScene","composerIntensity","separateOutputs","midiPlayback"};
     for(int k=0;k<14;++k) for(size_t i=0;i<specs.size();++i) if(specs[i].id==switches[k])ccMap[size_t(20+k)].store(int(i));
+    for(size_t i=0;i<specs.size();++i)if(specs[i].id=="krell")ccMap[34].store(int(i));
 }
 
 jerzy::Parameters BassAmbientProcessor::readParameters() const {
@@ -94,6 +97,16 @@ jerzy::Parameters BassAmbientProcessor::readParameters() const {
         sound.tone=values[i++]->load();sound.cutoff=values[i++]->load();sound.decay=values[i++]->load();sound.pan=values[i++]->load();
         for(auto& step:p.drumGrid[size_t(&sound-p.drumSounds.data())])step=int(std::lround(values[i++]->load()));
     }
+    for(auto* rack:{&p.arpRack,&p.drumsRack,&p.krellRack}) {
+#define BOOL(f,l,g) rack->f=values[i++]->load()>.5f;
+#define FLOAT(f,a,b,s,l,g) rack->f=values[i++]->load();
+#define CHOICE(f,l,g,c) rack->f=int(std::lround(values[i++]->load()));
+#include "FXParameters.def"
+#undef BOOL
+#undef FLOAT
+#undef CHOICE
+        for(int k=0;k<6;++k)rack->order[size_t(k)]=int(std::lround(values[i++]->load()));
+    }
     return p;
 }
 
@@ -108,7 +121,7 @@ void BassAmbientProcessor::prepareToPlay(double sampleRate,int) {
     stopWorker=false;resourceWorker=std::thread([this] {while(!stopWorker.load()) {instrument.serviceResources();serviceComposer();std::this_thread::sleep_for(std::chrono::milliseconds(5));}instrument.serviceResources();});
 }
 bool BassAmbientProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
-    if(!buses.inputBuses.isEmpty()||buses.outputBuses.isEmpty()||buses.outputBuses.size()>10||buses.getMainOutputChannelSet()!=juce::AudioChannelSet::stereo())return false;
+    if(!buses.inputBuses.isEmpty()||buses.outputBuses.isEmpty()||buses.outputBuses.size()>11||buses.getMainOutputChannelSet()!=juce::AudioChannelSet::stereo())return false;
     for(const auto& layout:buses.outputBuses)if(!layout.isDisabled()&&layout!=juce::AudioChannelSet::stereo())return false;
     return true;
 }
@@ -119,9 +132,9 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
     adoptComposer();
     audio.clear();auto target=readParameters();auto controls=target;
     if(!controls.composerEnabled&&wasComposerPlaying){instrument.allOff();wasComposerPlaying=false;playback=nullptr;}
-    std::array<int,9> stemChannels{};stemChannels.fill(-1);unsigned splitMask=0;
-    for(int t=0;t<9;++t)if(auto* bus=getBus(false,t+1);bus&&bus->isEnabled()) {
-        const int offset=getChannelIndexInProcessBlockBuffer(false,t+1,0);
+    std::array<int,10> stemChannels{};stemChannels.fill(-1);unsigned splitMask=0;
+    for(int t=0;t<10;++t)if(auto* bus=getBus(false,t==7?10:t>=8?t:t+1);bus&&bus->isEnabled()) {
+        const int offset=getChannelIndexInProcessBlockBuffer(false,t==7?10:t>=8?t:t+1,0);
         if(offset>=0&&offset+1<audio.getNumChannels()){stemChannels[size_t(t)]=offset;if(controls.separateOutputs)splitMask|=1U<<t;}
     }
     if(!controls.composerEnabled)instrument.configureResources(target);
@@ -138,11 +151,11 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
 #undef INT
 #undef CHOICE
 #undef CHOICE_DEN
-    current.padRack=previous.padRack;current.masterRack=previous.masterRack;
+    current.padRack=previous.padRack;current.masterRack=previous.masterRack;current.arpRack=previous.arpRack;current.drumsRack=previous.drumsRack;current.krellRack=previous.krellRack;
     // Adopt discrete fields immediately, retaining only continuous values for the ramp.
-    for(int rack=0;rack<2;++rack) {
-        auto& c=rack==0?current.padRack:current.masterRack;
-        const auto& t=rack==0?target.padRack:target.masterRack;
+    for(int rack=0;rack<5;++rack) {
+        auto& c=rack==0?current.padRack:rack==1?current.masterRack:rack==2?current.arpRack:rack==3?current.drumsRack:current.krellRack;
+        const auto& t=rack==0?target.padRack:rack==1?target.masterRack:rack==2?target.arpRack:rack==3?target.drumsRack:target.krellRack;
 #define BOOL(f,l,g) c.f=t.f;
 #define FLOAT(f,a,b,s,l,g)
 #define CHOICE(f,l,g,c_) c.f=t.f;
@@ -167,7 +180,7 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
     tempo=juce::jlimit(20.0,400.0,tempo);tempoDisplay=tempo;clockBarBeats=double(num)*4/std::max(1,den);
     instrument.beginBlock(ppq,tempo,playing);
     double increment=tempo/(60*sr);const double smoothing=1-std::exp(-1/(sr*.02));
-    std::array<float,9> peaks{};std::array<bool,7> inputs{},active{};
+    std::array<float,10> peaks{};std::array<bool,8> inputs{},active{};
     auto event=midi.cbegin();const auto end=midi.cend();float maximum=0;
     for(int sample=0;sample<audio.getNumSamples();++sample) {
 #define BOOL(f,l,g)
@@ -181,9 +194,9 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
 #undef INT
 #undef CHOICE
 #undef CHOICE_DEN
-        for(int rack=0;rack<2;++rack) {
-            auto& c=rack==0?current.padRack:current.masterRack;
-            const auto& t=rack==0?target.padRack:target.masterRack;
+        for(int rack=0;rack<5;++rack) {
+            auto& c=rack==0?current.padRack:rack==1?current.masterRack:rack==2?current.arpRack:rack==3?current.drumsRack:current.krellRack;
+            const auto& t=rack==0?target.padRack:rack==1?target.masterRack:rack==2?target.arpRack:rack==3?target.drumsRack:target.krellRack;
 #define BOOL(f,l,g)
 #define FLOAT(f,a,b,s,l,g) c.f+=(t.f-c.f)*smoothing;
 #define CHOICE(f,l,g,c_)
@@ -205,24 +218,24 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
                 }
             }
             else if((controls.midiPlayback||controls.composerEnabled)&&!m.isController()&&!m.isPitchWheel()) {if(controls.midiPlayback)routePartMidi(m,current);}
-            else if(m.isNoteOn()) instrument.noteOn(m.getNoteNumber(),ch,m.getFloatVelocity(),current,position);
+            else if(m.isNoteOn()){instrument.noteOn(m.getNoteNumber(),ch,m.getFloatVelocity(),current,position);if(controls.harmonyLink&&ch!=10)setParameterValue("harmonyRoot",float(m.getNoteNumber()));}
             else if(m.isNoteOff()) instrument.noteOff(m.getNoteNumber(),ch,current,position);
             else if(m.isPitchWheel()) instrument.pitchBend(ch,m.getPitchWheelValue());
             else if(m.isController()) {
                 const int cc=m.getControllerNumber(),value=m.getControllerValue();
-                const int mapped=ccMap[size_t(cc)].load();if(mapped>=0&&mapped<int(parameterGroups.size())){const int group=parameterGroups[size_t(mapped)];if(group<=1)inputs[0]=true;else if(group==2)inputs[1]=true;else if(group==6)inputs[2]=true;else if(group>=8&&group<=11)inputs[size_t(group-5)]=true;else if(group>=14&&group<=20)inputs[size_t(group-14)]=true;}
+                const int mapped=ccMap[size_t(cc)].load();if(mapped>=0&&mapped<int(parameterGroups.size())){const int group=parameterGroups[size_t(mapped)];if(group<=1)inputs[0]=true;else if(group==2)inputs[1]=true;else if(group==6)inputs[2]=true;else if(group>=8&&group<=11)inputs[size_t(group-5)]=true;else if(group==23||group==24)inputs[7]=true;else if(group>=14&&group<=20)inputs[size_t(group-14)]=true;}
 
                 if(cc==120) {generateParameter->setValueNotifyingHost(0);target.autoPlay=current.autoPlay=controls.autoPlay=false;if(auto* parameter=state.getParameter("composerPlaying"))parameter->setValueNotifyingHost(0);controls.composerPlaying=false;instrument.reset();wasComposerPlaying=false;}
                 else if(cc==123)instrument.allOff();
                 else {handleMappedController(cc,value,controls);target=controls;instrument.controller(ch,cc,value,current,position);}
                 // Discrete module changes apply at the exact event sample.
-                current.bass=target.bass;current.pad=target.pad;current.arp=target.arp;current.drums=target.drums;
+                current.bass=target.bass;current.pad=target.pad;current.arp=target.arp;current.drums=target.drums;current.krell=target.krell;
                 current.fxEnabled=target.fxEnabled;current.autoPlay=target.autoPlay;
             }
             else if(m.isAllNotesOff()||m.isAllSoundOff()) instrument.allOff();
             if(m.isNoteOn()){
-                if(controls.midiPlayback){const int track=ch==1?0:ch==2?1:ch==3?2:ch==10?(m.getNoteNumber()==36?3:m.getNoteNumber()==38||m.getNoteNumber()==40?4:m.getNoteNumber()==42||m.getNoteNumber()==44?5:6):-1;if(track>=0)inputs[size_t(track)]=true;}
-                else if(!controls.composerEnabled){inputs[0]|=controls.bass;inputs[1]|=controls.pad;inputs[2]|=controls.arp;if(ch==10)for(int t=3;t<7;++t)inputs[size_t(t)]=true;}
+                if(controls.midiPlayback){const int track=ch==1?0:ch==2?1:ch==3?2:ch==4?7:ch==10?(m.getNoteNumber()==36?3:m.getNoteNumber()==38||m.getNoteNumber()==40?4:m.getNoteNumber()==42||m.getNoteNumber()==44?5:6):-1;if(track>=0)inputs[size_t(track)]=true;}
+                else if(!controls.composerEnabled){inputs[0]|=controls.bass;inputs[1]|=controls.pad;inputs[2]|=controls.arp;inputs[7]|=controls.krell;if(ch==10)for(int t=3;t<7;++t)inputs[size_t(t)]=true;}
             }
             ++event;
         }
@@ -234,8 +247,8 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
         const auto& stems=instrument.stemOutputs();
         const auto& returns=instrument.returnOutputs();
         const auto voices=instrument.activeTracks();
-        for(int t=0;t<9;++t){const auto value=t<7?stems[size_t(t)]:returns[size_t(t-7)];peaks[size_t(t)]=std::max(peaks[size_t(t)],float(std::max(std::abs(value.l),std::abs(value.r))));
-            if(t<7)active[size_t(t)]|=voices[size_t(t)];
+        for(int t=0;t<10;++t){const auto value=t<8?stems[size_t(t)]:returns[size_t(t-8)];peaks[size_t(t)]=std::max(peaks[size_t(t)],float(std::max(std::abs(value.l),std::abs(value.r))));
+            if(t<8)active[size_t(t)]|=voices[size_t(t)];
             if(stemChannels[size_t(t)]>=0){audio.setSample(stemChannels[size_t(t)],sample,float(value.l));audio.setSample(stemChannels[size_t(t)]+1,sample,float(value.r));}}
         if(controls.clockSource==2&&midiClock.running&&midiClock.valid(clockSamples+sample))midiClock.beat+=increment;
         audio.setSample(0,sample,float(output.l));audio.setSample(1,sample,float(output.r));
@@ -244,8 +257,8 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
     localPPQ=ppq+audio.getNumSamples()*increment;clockSamples+=audio.getNumSamples();midi.clear();
     tempoDisplay=tempo;beatDisplay=controls.clockSource==2?midiClock.beat:localPPQ;
     if(controls.clockSource==2)clockStatus=midiClock.valid(clockSamples)?1:midiClock.locked?3:2;
-    for(int t=0;t<9;++t)channelPeak[size_t(t)]=std::max(peaks[size_t(t)],channelPeak[size_t(t)].load()*float(std::exp(-audio.getNumSamples()/(sr*.15))));
-    for(int t=0;t<7;++t){if(inputs[size_t(t)])inputPulse[size_t(t)]=int(sr*.15);else inputPulse[size_t(t)]=std::max(0,inputPulse[size_t(t)].load()-audio.getNumSamples());activePulse[size_t(t)]=active[size_t(t)]?int(sr*.12):std::max(0,activePulse[size_t(t)].load()-audio.getNumSamples());}
+    for(int t=0;t<10;++t)channelPeak[size_t(t)]=std::max(peaks[size_t(t)],channelPeak[size_t(t)].load()*float(std::exp(-audio.getNumSamples()/(sr*.15))));
+    for(int t=0;t<8;++t){if(inputs[size_t(t)])inputPulse[size_t(t)]=int(sr*.15);else inputPulse[size_t(t)]=std::max(0,inputPulse[size_t(t)].load()-audio.getNumSamples());activePulse[size_t(t)]=active[size_t(t)]?int(sr*.12):std::max(0,activePulse[size_t(t)].load()-audio.getNumSamples());}
     rootDisplay=instrument.currentRoot();peak=maximum;drumStep=instrument.drumPosition();arpNote=instrument.arpNoteDisplay();fxBytes=instrument.fxMemoryBytes();
 }
 
@@ -299,6 +312,9 @@ void BassAmbientProcessor::applyPreset(int preset) {
     if(preset==6) {set("style",5);set("model",2);set("density",.8f);set("swing",.22f);set("fill",.35f);set("drums",1);set("arp",1);set("arpPulses",5);set("arpLevel",.22f);}
     if(preset==7) {set("bass",0);set("arp",1);set("arpModel",1);set("arpPattern",4);set("arpGateRandom",.7f);set("arpPitchRandom",.35f);set("arpPanMode",1);set("pad",1);set("padLevel",.2f);}
     if(preset==8) {set("bass",0);set("pad",1);set("padMode",2);set("engine1",2);set("engine2",3);set("padDetune",18);set("padShimmer",.5f);set("krellMax",18);set("padAttack",2);set("padRelease",8);set("masterFX",.4f);}
+    if(preset==9){set("model",3);set("style",3);set("cutoff",3500);set("drive",.08f);set("sub",0);set("bassSustain",.75f);set("bassDecay",.6f);set("gate",.7f);set("swing",.12f);set("bassFX",.08f);}
+    if(preset>=10&&preset<=13){set("model",3);set("style",float(preset));set("cutoff",preset==11?6000:3500);set("drive",preset==11?.3f:.08f);set("sub",0);set("bassSustain",.7f);set("gate",preset==11?.5f:.8f);set("guitarArticulation",preset==13?0:1);set("swing",preset==13?.6f:0);set("division",2);set("movement",.8f);set("density",1);}
+    if(preset==14){set("bass",0);set("pad",0);set("arp",0);set("drums",0);set("krell",1);set("krellEngine",0);set("krellAttack",.4f);set("krellRelease",2);set("harmonyLink",1);}
     resetRequested=true;
 }
 BassAmbientProcessor::~BassAmbientProcessor() {stopResourceWorker();delete activeComposer;delete pendingComposer.load();delete retiredComposer.load();}

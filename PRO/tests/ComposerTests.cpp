@@ -25,9 +25,9 @@ int main(){try{
     Scene sustained=thresholdDocument.scenes[2];sustained.clips[1].generated=false;sustained.clips[1].notes={{0,12,60,100,0}};thresholdDocument.scenes[2]=sustained;auto checkpoints=compile(thresholdDocument);
     expect(!checkpoints.scenes[2].sections[1].chase.empty(),"bar checkpoints retain held manual notes for seek");
     bool invalid=false;try{auto bad=document;bad.song[0].sceneId=999;validate(bad);}catch(...){invalid=true;}expect(invalid,"missing scene reference rejected");
-    for(int track=0;track<7;++track){Instrument engine;engine.prepare(48000);Parameters p;p.bass=track==0;p.pad=track==1;p.arp=track==2;p.drums=track>=3;p.fxEnabled=false;p.padAttack=.01;p.padRelease=.01;p.arpAttack=.001;
-        engine.externalNote(track,track>=3?drumNotes[track-3]:60,1,0,100,true,false,false,&p);double stemEnergy=0,otherEnergy=0,mainEnergy=0;
-        for(int i=0;i<12000;++i){auto out=engine.next(p,double(i)/24000,4,4,true,1U<<track);mainEnergy+=std::abs(out.l)+std::abs(out.r);const auto& stems=engine.stemOutputs();for(int t=0;t<7;++t){const auto x=stems[size_t(t)];expect(std::isfinite(x.l)&&std::isfinite(x.r),"finite separate output");if(t==track)stemEnergy+=std::abs(x.l)+std::abs(x.r);else otherEnergy+=std::abs(x.l)+std::abs(x.r);}}
+    for(int track=0;track<8;++track){Instrument engine;engine.prepare(48000);Parameters p;p.bass=track==0;p.pad=track==1;p.arp=track==2;p.drums=track>=3&&track<=6;p.krell=track==7;p.krellAttack=.01;p.fxEnabled=false;p.padAttack=.01;p.padRelease=.01;p.arpAttack=.001;
+        engine.externalNote(track,track>=3&&track<=6?drumNotes[track-3]:60,1,0,100,true,false,false,&p);double stemEnergy=0,otherEnergy=0,mainEnergy=0;
+        for(int i=0;i<12000;++i){auto out=engine.next(p,double(i)/24000,4,4,true,1U<<track);mainEnergy+=std::abs(out.l)+std::abs(out.r);const auto& stems=engine.stemOutputs();for(int t=0;t<8;++t){const auto x=stems[size_t(t)];expect(std::isfinite(x.l)&&std::isfinite(x.r),"finite separate output");if(t==track)stemEnergy+=std::abs(x.l)+std::abs(x.r);else otherEnergy+=std::abs(x.l)+std::abs(x.r);}}
         expect(stemEnergy>.01,"every separate output audible");expect(otherEnergy==0,"no bleed into other instruments");expect(mainEnergy==0,"split output excluded from MAIN");
     }
     for(int track=0;track<3;++track){Scene rootScene;rootScene.bars=2;auto& clip=rootScene.clips[size_t(track)];clip.generated=true;clip.explicitRoots=true;clip.notes={{1,2,43,100,0}};
@@ -50,8 +50,19 @@ int main(){try{
     {Instrument engine;engine.prepare(48000);Parameters p;p.bass=true;p.pad=p.arp=p.drums=false;p.bassFX=p.padFX=p.masterFX=0;p.mix0Delay=p.mix0Reverb=.5;
         engine.configureResources(p);engine.serviceResources();engine.configureResources(p);expect(engine.fxMemoryBytes()>0,"send racks allocate outside render loop");
         engine.externalNote(0,48,1,0,1,true,false,false,&p);double delayEnergy=0,reverbEnergy=0,mainEnergy=0;
-        for(int i=0;i<72000;++i){if(i==6000)engine.externalNote(0,48,0,0,1,false);auto out=engine.next(p,double(i)/24000,4,4,true,(1U<<0)|(1U<<7)|(1U<<8));mainEnergy+=std::abs(out.l)+std::abs(out.r);delayEnergy+=std::abs(engine.returnOutputs()[0].l)+std::abs(engine.returnOutputs()[0].r);reverbEnergy+=std::abs(engine.returnOutputs()[1].l)+std::abs(engine.returnOutputs()[1].r);}
+        for(int i=0;i<72000;++i){if(i==6000)engine.externalNote(0,48,0,0,1,false);auto out=engine.next(p,double(i)/24000,4,4,true,(1U<<0)|(1U<<8)|(1U<<9));mainEnergy+=std::abs(out.l)+std::abs(out.r);delayEnergy+=std::abs(engine.returnOutputs()[0].l)+std::abs(engine.returnOutputs()[0].r);reverbEnergy+=std::abs(engine.returnOutputs()[1].l)+std::abs(engine.returnOutputs()[1].r);}
         expect(delayEnergy>.01&&reverbEnergy>.01,"both send effects produce separate wet returns");expect(mainEnergy==0,"connected sends and stems excluded from MAIN");p.fxEnabled=false;engine.configureResources(p);engine.serviceResources();expect(engine.fxMemoryBytes()==0,"global FX power frees send buffers");
     }
+    for(int track:{2,3,7}){Instrument engine;engine.prepare(48000);Parameters p;p.bass=p.pad=false;p.arp=track==2;p.drums=track==3;p.krell=track==7;p.krellAttack=.01;p.arpFX=p.drumsFX=p.krellFX=1;
+        FXParameters fx;fx.fxDrive=fx.fxChorus=fx.fxDelay=fx.fxGrain=fx.fxReverb=false;fx.fxWidth=true;fx.width=0;p.arpRack=p.drumsRack=p.krellRack=fx;p.drumSounds[0].pan=-1;
+        engine.configureResources(p);engine.serviceResources();engine.configureResources(p);engine.externalNote(track,track==3?36:60,1,-1,1,true,false,false,&p);
+        double left=0,right=0,other=0;for(int i=0;i<4000;++i){engine.next(p,double(i)/24000,4,4,true);const auto& stems=engine.stemOutputs();left+=std::abs(stems[size_t(track)].l);right+=std::abs(stems[size_t(track)].r);for(int t=0;t<8;++t)if(t!=track)other+=std::abs(stems[size_t(t)].l)+std::abs(stems[size_t(t)].r);}
+        expect(left>.01&&right>.01,"Arp and Drums racks process the isolated stereo stem");expect(other==0,"instrument FX retain separate mixer lanes");
+    }
+    {Scene linked;linked.patch.harmonyLink=true;linked.patch.harmonyRoot=36;linked.clips[0].generated=true;linked.clips[0].explicitRoots=true;linked.clips[0].notes={{0,4,36,100,0}};
+        for(int track:{1,2,7}){const auto roots=rootClip(linked,track);expect(roots.size()==1&&roots[0].pitch==36,"LINK shares Bass C root with Ambient Arp Krell");auto before=generateClip(linked,track);auto transposed=linked;transposed.patch.harmonyRoot=38;const auto after=generateClip(transposed,track);expect(!before.empty()&&before.size()==after.size(),"linked module generation survives global root change");for(size_t i=0;i<before.size();++i)expect(after[i].pitch==before[i].pitch+2,"global root transposes every linked generated module");}
+        linked.clips[2].generated=false;linked.clips[2].notes={{0,2,67,100,0}};expect(generateClip(linked,2)[0].pitch==67,"LINK preserves MANUAL pitches");
+    }
+    {auto d=factoryDocument();d.scenes[0].clips[1].generated=false;d.scenes[0].clips[1].notes={{0,16,60,100,0}};d.scenes[0].clips[1].enterBar=2;auto result=compile(d);bool found=false;for(const auto& n:result.scenes[0].notes)if(n.track==1){found=true;expect(n.note.beat==8&&n.note.length==8,"held manual note starts at instrument entry boundary");}expect(found,"arrangement entry does not discard an overlapping held note");}
     std::cout<<"PASS "<<checks<<" Composer checks: scenes, progressions, freeze, song repeats, variants, meters, seven isolated outputs\n";
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<"\n";return 1;}}

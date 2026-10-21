@@ -28,6 +28,7 @@ jobs:
           New-Item -ItemType Directory -Force $dest | Out-Null
           Copy-Item 'build-pro/JerzyBassAmbientPRO_artefacts/Release/Standalone/Jerzy Bass Ambient PRO.exe' $dest
           Compress-Archive -Path 'build-pro/JerzyBassAmbientPRO_artefacts/Release/VST3/Jerzy Bass Ambient PRO.vst3' -DestinationPath "$dest/Jerzy-Bass-Ambient-PRO-VST3-Windows.zip"
+          Copy-Item 'PRO/docs/START_PL.md' "$dest/START-PL.md"
           Copy-Item 'PRO/docs/PERFORMANCE.md' "$dest/PERFORMANCE.md"
           Copy-Item 'PRO/docs/VISUAL_LANGUAGE.md' "$dest/VISUAL_LANGUAGE.md"
           Copy-Item 'PRO/docs/COMPOSER.md' "$dest/COMPOSER.md"
@@ -42,7 +43,7 @@ jobs:
       - name: Save tested binaries to the dedicated delivery branch
         shell: pwsh
         run: |
-          $ref = 'windows/pro-0.5'
+          $ref = 'windows/pro-0.6'
           $remote = git ls-remote origin "refs/heads/$ref"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect delivery branch' }
           if ($remote) {

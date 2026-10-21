@@ -57,7 +57,7 @@ int main() {
         juce::ComboBox* selector=nullptr;
         for(int i=0;i<editor->getNumChildComponents();++i)
             if(editor->getChildComponent(i)->getComponentID()=="rackSelector") selector=dynamic_cast<juce::ComboBox*>(editor->getChildComponent(i));
-        require(selector!=nullptr,"FX rack selector missing");
+        require(selector!=nullptr,"FX rack selector missing");require(selector->getNumItems()==6,"six instrument/master FX racks");
         auto snapshot=[&](const juce::String& suffix) {
             auto image=editor->createComponentSnapshot(editor->getLocalBounds(),true,1);
             require(image.isValid()&&image.getWidth()==editor->getWidth()&&image.getHeight()==editor->getHeight(),"resizable GUI snapshot");
@@ -68,10 +68,10 @@ int main() {
         const std::array<std::pair<int,int>,3> sizes{{{1000,680},{1200,820},{1600,1100}}};
         for(const auto& size:sizes) {
             editor->setSize(size.first,size.second);
-            for(const auto& name:juce::StringArray{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER"}) {
+            for(const auto& name:juce::StringArray{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER","KRELL"}) {
                 tab(name);require(selector->isVisible()==(name=="FX"),"rack selector visibility");
                 if(name!="FX") snapshot(name+"-"+juce::String(size.first));
-                else for(int rack=1;rack<=3;++rack) {
+                else for(int rack=1;rack<=6;++rack) {
                     selector->setSelectedId(rack,juce::sendNotificationSync);
                     snapshot("FX-"+juce::String(rack)+"-"+juce::String(size.first));
                 }
@@ -133,21 +133,21 @@ int main() {
         processor.releaseResources();
         auto project=jerzy::composer::factoryDocument();project.scenes.resize(1);auto& scene=project.scenes[0];scene.bars=1;scene.cutTails=true;
         scene.patch.fxEnabled=false;scene.patch.bass=scene.patch.pad=scene.patch.arp=scene.patch.drums=true;scene.patch.padAttack=.01;
-        for(int t=0;t<7;++t){auto& c=scene.clips[size_t(t)];c.enabled=true;c.generated=false;c.enterBar=c.leaveBar=0;c.notes={{0,.5,t<3?36+t*12:jerzy::composer::drumNotes[t-3],100,0}};}
+        for(int t=0;t<8;++t){auto& c=scene.clips[size_t(t)];c.enabled=true;c.generated=false;c.enterBar=c.leaveBar=0;c.notes={{0,.5,t<3?36+t*12:t==7?60:jerzy::composer::drumNotes[t-3],100,0}};}
         project.song={{scene.id,2,false}};processor.editComposer([&](auto& d){d=project;});
         const auto file=juce::File::getCurrentWorkingDirectory().getChildFile("composer-test.mid");
         auto result=processor.exportComposer(file,true,0);require(result.wasOk(),"song MIDI export");juce::MidiFile exported;auto input=file.createInputStream();require(input&&exported.readFrom(*input),"MIDI readback");
-        require(exported.getNumTracks()==8&&exported.getTimeFormat()==960,"type-1 seven-track export");int exportedNotes=0;double lastTick=0;
+        require(exported.getNumTracks()==9&&exported.getTimeFormat()==960,"type-1 eight-instrument export");int exportedNotes=0;double lastTick=0;
         for(int t=0;t<exported.getNumTracks();++t)for(int i=0;i<exported.getTrack(t)->getNumEvents();++i){const auto& m=exported.getTrack(t)->getEventPointer(i)->message;if(m.isNoteOn())++exportedNotes;lastTick=std::max(lastTick,m.getTimeStamp());}
-        require(exportedNotes==14&&lastTick>=8*960,"export matches repeated song notes and duration");
+        require(exportedNotes==16&&lastTick>=8*960,"export matches repeated song notes and duration");
         const auto projectFile=file.withFileExtension("jpro");require(processor.saveComposer(projectFile).wasOk(),"Composer project save");
         processor.editComposer([](auto& d){d.scenes[0].name="CHANGED";});require(processor.loadComposer(projectFile).wasOk(),"Composer project load");require(processor.composerDocument().scenes[0].name==project.scenes[0].name,"project names restored");
         processor.getStateInformation(state);processor.editComposer([](auto& d){d.song.clear();});processor.setStateInformation(state.getData(),int(state.getSize()));require(processor.composerDocument().song.size()==1,"Composer embedded in host state");
-        auto buses=processor.getBusesLayout();require(buses.outputBuses.size()==10,"MAIN, seven instruments and two FX return buses");for(auto& layout:buses.outputBuses)layout=juce::AudioChannelSet::stereo();require(processor.setBusesLayout(buses),"enable all mixer outputs");
+        auto buses=processor.getBusesLayout();require(buses.outputBuses.size()==11,"MAIN, eight instruments and two FX return buses");for(auto& layout:buses.outputBuses)layout=juce::AudioChannelSet::stereo();require(processor.setBusesLayout(buses),"enable all mixer outputs");
         auto mono=buses;mono.outputBuses.set(1,juce::AudioChannelSet::mono());std::cout<<"Mono stem: "<<mono.outputBuses[1].getDescription()<<" direct="<<processor.isBusesLayoutSupported(mono)<<" checked="<<processor.checkBusesLayoutSupported(mono)<<"\n";require(!processor.checkBusesLayoutSupported(mono),"reject unsupported stem layout");
         processor.prepareToPlay(48000,128);set("separateOutputs",1);set("fxEnabled",0);processor.launchComposer(0,true);host.ppq=0;host.playing=true;
-        juce::AudioBuffer<float> multi(20,128);double mainSum=0;std::array<double,7> energies{};
-        for(int block=0;block<100;++block){midi.clear();processor.processBlock(multi,midi);for(int k=0;k<128;++k){mainSum+=std::abs(multi.getSample(0,k))+std::abs(multi.getSample(1,k));for(int t=0;t<7;++t)energies[size_t(t)]+=std::abs(multi.getSample(2+t*2,k))+std::abs(multi.getSample(3+t*2,k));}host.ppq+=128.0/24000;}
+        juce::AudioBuffer<float> multi(22,128);double mainSum=0;std::array<double,8> energies{};
+        for(int block=0;block<100;++block){midi.clear();processor.processBlock(multi,midi);for(int k=0;k<128;++k){mainSum+=std::abs(multi.getSample(0,k))+std::abs(multi.getSample(1,k));for(int t=0;t<8;++t)energies[size_t(t)]+=std::abs(multi.getSample(t==7?20:2+t*2,k))+std::abs(multi.getSample(t==7?21:3+t*2,k));}host.ppq+=128.0/24000;}
         require(mainSum==0,"MAIN does not double routed stems");for(double energy:energies)require(energy>.001,"every FL mixer output carries its instrument");
         for(int block=100;block<1650;++block){processor.processBlock(multi,midi);host.ppq+=128.0/24000;}
         require(!processor.readParameters().composerPlaying,"SONG stops automatically after the final repeat");
@@ -159,14 +159,14 @@ int main() {
         for(int block=0;block<20;++block){processor.processBlock(multi,midi);for(int k=0;k<128;++k)directPad+=std::abs(multi.getSample(4,k))+std::abs(multi.getSample(5,k));host.ppq+=128.0/24000;}
         require(directPad>.001,"first imported MIDI note survives switching from Composer");set("midiPlayback",0);
 
-        for(int t=1;t<10;++t)buses.outputBuses.set(t,juce::AudioChannelSet::disabled());require(processor.setBusesLayout(buses),"disable optional buses");
+        for(int t=1;t<11;++t)buses.outputBuses.set(t,juce::AudioChannelSet::disabled());require(processor.setBusesLayout(buses),"disable optional buses");
         processor.releaseResources();processor.prepareToPlay(48000,128);processor.launchComposer(0,true);host.ppq=0;double fallback=0;for(int block=0;block<10;++block){processor.processBlock(audio,midi);for(int k=0;k<128;++k)fallback+=std::abs(audio.getSample(0,k));host.ppq+=128.0/24000;}require(fallback>.01,"unconnected stems fall back to MAIN");
         processor.launchComposer(0,true);
         editor->setSize(1440,1280);tab("COMPOSER");snapshot("COMPOSER-final");tab("MIXER");snapshot("MIXER-final");for(int i=0;i<editor->getNumChildComponents();++i)if(auto* b=dynamic_cast<juce::TextButton*>(editor->getChildComponent(i)))if(b->getButtonText()=="MIXER")require(b->getRight()<=editor->getWidth(),"MIXER tab remains within editor bounds");tab("COMPOSER");
         processor.editComposer([](auto& d){d=jerzy::composer::factoryDocument();});
         const auto demo=juce::File::getCurrentWorkingDirectory();require(processor.exportComposer(demo.getChildFile("PRO-composer-song.mid"),true,0).wasOk(),"factory song export");require(processor.saveComposer(demo.getChildFile("Composer-Demo.jpro")).wasOk(),"factory Composer project");
         const auto factory=processor.composerDocument();const auto compiled=jerzy::composer::compile(factory);const auto pack=demo.getChildFile("MIDI-Pattern-Pack");require(pack.createDirectory().wasOk(),"pattern pack folder");
-        for(size_t i=0;i<factory.scenes.size();++i)for(int t=0;t<7;++t)require(jerzy::composer::writeMidi(compiled.scenes[i],factory.tempo,pack.getChildFile(juce::String(int(i)+1)+"-"+juce::String(factory.scenes[i].name)+"-"+jerzy::composer::trackNames[t]+".mid"),t).wasOk(),"per-scene per-instrument MIDI export");
+        for(size_t i=0;i<factory.scenes.size();++i)for(int t=0;t<8;++t)require(jerzy::composer::writeMidi(compiled.scenes[i],factory.tempo,pack.getChildFile(juce::String(int(i)+1)+"-"+juce::String(factory.scenes[i].name)+"-"+jerzy::composer::trackNames[t]+".mid"),t).wasOk(),"per-scene per-instrument MIDI export");
         processor.releaseResources();processor.setPlayHead(nullptr);
         // Clock source selection must not silently use the other source.
         processor.setPlayHead(&host);processor.prepareToPlay(48000,128);
@@ -182,6 +182,20 @@ int main() {
         set("arpGate",.91f);juce::Thread::sleep(30);processor.processBlock(audio,midi);juce::Thread::sleep(20);processor.processBlock(audio,midi);
         require(std::abs(processor.composerDocument().scenes[0].patch.arpGate-.91)<.001,"live module control updates Composer scene");require(processor.composerBeatDisplay.load()>=oldBeat,"patch recompile preserves arrangement position");
         processor.transport(false);processor.releaseResources();processor.setPlayHead(nullptr);
+        // Loading a scene captured with FX off must not defeat the global FX switch.
+        {BassAmbientProcessor fxProcessor;fxProcessor.editComposer([](auto& d){d.scenes.resize(1);d.song.clear();auto& scene=d.scenes[0];scene.patch.fxEnabled=false;for(auto& clip:scene.clips)clip.enabled=false;scene.clips[3].enabled=true;});
+            fxProcessor.setParameterValue("fxEnabled",1);fxProcessor.setParameterValue("composerLoop",1);fxProcessor.setParameterValue("separateOutputs",1);
+            fxProcessor.setParameterValue("mix3Delay",1);fxProcessor.setParameterValue("mix3Reverb",1);
+            auto outputs=fxProcessor.getBusesLayout();for(auto& bus:outputs.outputBuses)bus=juce::AudioChannelSet::stereo();require(fxProcessor.setBusesLayout(outputs),"FX return test buses");
+            fxProcessor.prepareToPlay(48000,128);fxProcessor.launchComposer(0,false);juce::AudioBuffer<float> wet(22,128);juce::MidiBuffer events;double delay=0,reverb=0;
+            for(int block=0;block<1100;++block){fxProcessor.processBlock(wet,events);for(int n=0;n<128;++n){delay+=std::abs(wet.getSample(16,n))+std::abs(wet.getSample(17,n));reverb+=std::abs(wet.getSample(18,n))+std::abs(wet.getSample(19,n));}if(block%16==0)juce::Thread::sleep(1);}
+            require(delay>.01&&reverb>.01,"global FX ON overrides saved scene FX OFF for drum sends");
+            fxProcessor.setParameterValue("fxEnabled",0);fxProcessor.processBlock(wet,events);for(int n=0;n<128;++n)require(wet.getSample(16,n)==0&&wet.getSample(17,n)==0&&wet.getSample(18,n)==0&&wet.getSample(19,n)==0,"global FX OFF immediately silences both send returns");fxProcessor.releaseResources();
+        }
+        set("krellFX",.21f);set("krell_delayMix",.49f);set("arpFX",.42f);set("drumsFX",.63f);set("arp_delayMix",.27f);set("drums_delayMix",.81f);set("drums_order0",4);processor.getStateInformation(state);set("arp_delayMix",0);set("drums_order0",0);processor.setStateInformation(state.getData(),int(state.getSize()));const auto newRacks=processor.readParameters();require(std::abs(newRacks.krellRack.delayMix-.49)<.001&&std::abs(newRacks.arpRack.delayMix-.27)<.001&&std::abs(newRacks.drumsRack.delayMix-.81)<.001&&newRacks.drumsRack.order[0]==4&&std::abs(newRacks.drumsFX-.63)<.001,"Arp/Drums FX independent host-state round trip");
+        auto stored=jerzy::composer::fromTree(jerzy::composer::toTree([&]{auto d=processor.composerDocument();d.scenes[0].patch=newRacks;return d;}()));require(std::abs(stored.scenes[0].patch.krellRack.delayMix-.49)<.001&&std::abs(stored.scenes[0].patch.arpRack.delayMix-.27)<.001&&stored.scenes[0].patch.drumsRack.order[0]==4,"new FX racks survive Composer project round trip");
+        set("model",3);tab("BASS");editor->resized();snapshot("BASS-GUITAR");tab("KRELL");snapshot("KRELL-final");require(processor.readParameters().model==3,"Bass Guitar model selected");
+        processor.applyPreset(9);require(processor.readParameters().model==3,"Bass Guitar factory preset");for(int kind=10;kind<=13;++kind){processor.applyPreset(kind);require(processor.readParameters().model==3&&processor.readParameters().style==kind,"Rock Metal Punk Blues presets select guitar and style");}processor.applyPreset(14);require(processor.readParameters().krell&&!processor.readParameters().bass&&!processor.readParameters().pad,"independent Krell audition preset");
         std::cout<<"PASS MIDI, three-rack routing state, legacy migration, GUI attachments, reorder PRO MIDI mappings, 64-step state, right-click and 24 page/rack snapshots\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<"\n";return 1; }

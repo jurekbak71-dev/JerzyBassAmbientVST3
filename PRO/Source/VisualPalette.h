@@ -3,19 +3,20 @@
 
 // Shared RGB identity for instrument pages, Composer clips and drum lanes.
 namespace ProVisual {
-inline const std::array<juce::Colour,7> tracks{
+inline const std::array<juce::Colour,8> tracks{
     juce::Colour::fromRGB(255,173,112), // Bass: orange
     juce::Colour::fromRGB(180,161,255), // Ambient: violet
     juce::Colour::fromRGB(99,219,208),  // Arp: turquoise
     juce::Colour::fromRGB(255,146,107), // Kick: coral
     juce::Colour::fromRGB(255,112,155), // Snare: pink
     juce::Colour::fromRGB(114,207,255), // Hi-hat: blue
-    juce::Colour::fromRGB(218,178,108)  // Aux: gold
+    juce::Colour::fromRGB(218,178,108), // Aux: gold
+    juce::Colour::fromRGB(170,235,118)  // Krell: lime
 };
-inline const std::array<juce::Colour,7> pages{
+inline const std::array<juce::Colour,8> pages{
     tracks[0],tracks[1],tracks[2],juce::Colour::fromRGB(255,210,100),
     juce::Colour::fromRGB(130,185,255),juce::Colour::fromRGB(161,222,128),
-    juce::Colour::fromRGB(230,210,170)
+    juce::Colour::fromRGB(230,210,170),tracks[7]
 };
 inline void tint(juce::Component& c,juce::Colour colour) {
     if(auto* label=dynamic_cast<juce::Label*>(&c))label->setColour(juce::Label::textColourId,colour);
