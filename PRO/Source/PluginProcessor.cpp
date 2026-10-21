@@ -117,6 +117,7 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
     if(resetRequested.exchange(false)||panicRequested.exchange(false)) {instrument.reset();wasComposerPlaying=false;playback=nullptr;previousComposerBeat=-1;tailUntil.fill(0);previousTracks.fill(false);}
     adoptComposer();
     audio.clear();auto target=readParameters();auto controls=target;
+    if(!controls.composerEnabled&&wasComposerPlaying){instrument.allOff();wasComposerPlaying=false;playback=nullptr;}
     std::array<int,7> stemChannels{};stemChannels.fill(-1);unsigned splitMask=0;
     for(int t=0;t<7;++t)if(auto* bus=getBus(false,t+1);bus&&bus->isEnabled()) {
         const int offset=getChannelIndexInProcessBlockBuffer(false,t+1,0);
@@ -207,7 +208,6 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
             ++event;
         }
         if(controls.composerEnabled) {target=composerSample(controls,position,tempo,playing,num,den);current=target;if(sample==0)instrument.configureResources(target);}
-        else if(wasComposerPlaying){instrument.allOff();wasComposerPlaying=false;playback=nullptr;}
         auto output=instrument.next(current,position,num,den,controls.composerEnabled||controls.midiPlayback,splitMask);
         const auto& stems=instrument.stemOutputs();
         for(int t=0;t<7;++t)if(stemChannels[size_t(t)]>=0){audio.setSample(stemChannels[size_t(t)],sample,float(stems[size_t(t)].l));audio.setSample(stemChannels[size_t(t)]+1,sample,float(stems[size_t(t)].r));}

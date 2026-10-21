@@ -154,11 +154,14 @@ int main() {
         processor.releaseResources();processor.editComposer([](auto& d){d.scenes[0].clips[6].threshold=.7;});processor.prepareToPlay(48000,128);set("composerIntensity",.2f);processor.launchComposer(0,true);host.ppq=0;double mutedAux=0;
         for(int block=0;block<10;++block){processor.processBlock(multi,midi);for(int k=0;k<128;++k)mutedAux+=std::abs(multi.getSample(14,k))+std::abs(multi.getSample(15,k));host.ppq+=128.0/24000;}
         require(mutedAux==0,"global intensity removes instruments below threshold");set("composerIntensity",1);
+        set("pad",0);processor.processBlock(multi,midi);host.ppq+=128.0/24000;
+        set("composerEnabled",0);set("midiPlayback",1);set("bass",0);set("pad",1);set("arp",0);set("drums",0);midi.addEvent(juce::MidiMessage::noteOn(2,60,1.0f),0);double directPad=0;
+        for(int block=0;block<20;++block){processor.processBlock(multi,midi);for(int k=0;k<128;++k)directPad+=std::abs(multi.getSample(4,k))+std::abs(multi.getSample(5,k));host.ppq+=128.0/24000;}
+        require(directPad>.001,"first imported MIDI note survives switching from Composer");set("midiPlayback",0);
+
         for(int t=1;t<8;++t)buses.outputBuses.set(t,juce::AudioChannelSet::disabled());require(processor.setBusesLayout(buses),"disable optional buses");
         processor.releaseResources();processor.prepareToPlay(48000,128);processor.launchComposer(0,true);host.ppq=0;double fallback=0;for(int block=0;block<10;++block){processor.processBlock(audio,midi);for(int k=0;k<128;++k)fallback+=std::abs(audio.getSample(0,k));host.ppq+=128.0/24000;}require(fallback>.01,"unconnected stems fall back to MAIN");
-        set("composerEnabled",0);set("midiPlayback",1);set("bass",0);set("pad",1);set("arp",0);set("drums",0);midi.addEvent(juce::MidiMessage::noteOn(2,60,1.0f),0);double directPad=0;
-        for(int block=0;block<20;++block){processor.processBlock(audio,midi);for(int k=0;k<128;++k)directPad+=std::abs(audio.getSample(0,k));host.ppq+=128.0/24000;}require(directPad>.001,"imported channel-2 MIDI plays pad directly");
-        set("midiPlayback",0);processor.launchComposer(0,true);
+        processor.launchComposer(0,true);
         editor->setSize(1440,1280);tab("COMPOSER");snapshot("COMPOSER-final");
         processor.editComposer([](auto& d){d=jerzy::composer::factoryDocument();});
         const auto demo=juce::File::getCurrentWorkingDirectory();require(processor.exportComposer(demo.getChildFile("PRO-composer-song.mid"),true,0).wasOk(),"factory song export");require(processor.saveComposer(demo.getChildFile("Composer-Demo.jpro")).wasOk(),"factory Composer project");
