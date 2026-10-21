@@ -34,7 +34,7 @@ juce_add_plugin(JerzyBassAmbientPRO
   IS_SYNTH TRUE NEEDS_MIDI_INPUT TRUE NEEDS_MIDI_OUTPUT FALSE
   EDITOR_WANTS_KEYBOARD_FOCUS FALSE COPY_PLUGIN_AFTER_BUILD FALSE)
 juce_generate_juce_header(JerzyBassAmbientPRO)
-target_sources(JerzyBassAmbientPRO PRIVATE Source/PluginProcessor.cpp Source/ComposerProcessor.cpp Source/ComposerView.cpp Source/PluginEditor.cpp Source/JerzyVSTGuiKit.h)
+target_sources(JerzyBassAmbientPRO PRIVATE Source/PluginProcessor.cpp Source/ComposerProcessor.cpp Source/ComposerView.cpp Source/AudioRender.cpp Source/PluginEditor.cpp Source/JerzyVSTGuiKit.h)
 target_compile_definitions(JerzyBassAmbientPRO PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(JerzyBassAmbientPRO PRIVATE Threads::Threads juce::juce_audio_utils PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 if(PRO_ENABLE_LTO)

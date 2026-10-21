@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
+#include "AudioRenderChecks.h"
 class Host final : public juce::AudioPlayHead {
 public:
     double ppq=0,bpm=120;bool playing=true;
@@ -196,6 +197,8 @@ int main() {
         auto stored=jerzy::composer::fromTree(jerzy::composer::toTree([&]{auto d=processor.composerDocument();d.scenes[0].patch=newRacks;return d;}()));require(std::abs(stored.scenes[0].patch.krellRack.delayMix-.49)<.001&&std::abs(stored.scenes[0].patch.arpRack.delayMix-.27)<.001&&stored.scenes[0].patch.drumsRack.order[0]==4,"new FX racks survive Composer project round trip");
         set("model",3);tab("BASS");editor->resized();snapshot("BASS-GUITAR");tab("KRELL");snapshot("KRELL-final");require(processor.readParameters().model==3,"Bass Guitar model selected");
         processor.applyPreset(9);require(processor.readParameters().model==3,"Bass Guitar factory preset");for(int kind=10;kind<=13;++kind){processor.applyPreset(kind);require(processor.readParameters().model==3&&processor.readParameters().style==kind,"Rock Metal Punk Blues presets select guitar and style");}processor.applyPreset(14);require(processor.readParameters().krell&&!processor.readParameters().bass&&!processor.readParameters().pad,"independent Krell audition preset");
+        tab("COMPOSER");viewport->setViewPosition(0,1200);snapshot("AUDIO-EXPORT");
+        checkAudioRendering();
         std::cout<<"PASS MIDI, three-rack routing state, legacy migration, GUI attachments, reorder PRO MIDI mappings, 64-step state, right-click and 24 page/rack snapshots\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<"\n";return 1; }

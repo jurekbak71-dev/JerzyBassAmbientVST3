@@ -4,6 +4,7 @@
 #include "ComposerIO.h"
 #include <thread>
 #include "MidiClock.h"
+#include "AudioRender.h"
 
 struct ParameterSpec {
     juce::String id,label; int group=0; int kind=0;
@@ -58,6 +59,9 @@ public:
     void editComposer(const std::function<void(jerzy::composer::Document&)>& edit);
     juce::String composerError() const;
     juce::Result exportComposer(const juce::File&,bool song,int scene,int track=-1) const;
+    static juce::Result renderAudio(jerzy::composer::Document,jerzy::Parameters,
+                                    const AudioRenderOptions&,const juce::File&,
+                                    const std::function<bool(double)>& progress={});
     juce::Result saveComposer(const juce::File&) const;
     juce::Result loadComposer(const juce::File&);
     void launchComposer(int scene,bool song);
