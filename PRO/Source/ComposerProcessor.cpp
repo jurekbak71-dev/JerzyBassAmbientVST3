@@ -52,6 +52,9 @@ Parameters BassAmbientProcessor::composerSample(const Parameters& controls,doubl
     if(seek){instrument.allOff();sectionIndex=-1;eventCursor=size_t(std::lower_bound(timeline.events.begin(),timeline.events.end(),beat,[](const Event& e,double b){return e.beat<b;})-timeline.events.begin());}
     int section=-1;
     if(within){auto it=std::upper_bound(timeline.sections.begin(),timeline.sections.end(),beat,[](double b,const Section& s){return b<s.start;});if(it!=timeline.sections.begin())section=int(it-timeline.sections.begin()-1);}
+    auto powerForTrack=[&](int track){const bool power=track==0?controls.bass:track==1?controls.pad:track==2?controls.arp:controls.drums&&controls.drumSounds[size_t(track-3)].enabled;
+        const double threshold=section>=0?timeline.sections[size_t(section)].clips[size_t(track)].threshold:0;
+        return power&&controls.composerIntensity>0&&controls.composerIntensity+1e-6>=threshold;};
     if(section!=sectionIndex||(sectionIndex<0&&within)){
         const auto previous=sectionPatch;
         std::array<bool,tracks> enabled{};
@@ -66,19 +69,19 @@ Parameters BassAmbientProcessor::composerSample(const Parameters& controls,doubl
     if(seek&&section>=0){
         // Offline bar checkpoints bound seeking work to at most one bar of events.
         const auto& checkpoint=timeline.sections[size_t(section)];
-        for(const auto& n:checkpoint.chase)if(n.note.beat+n.note.length>beat)instrument.externalNote(n.track,n.note.pitch,n.note.velocity/127.0*controls.composerIntensity,n.note.pan,n.id,true,n.note.accent,n.note.slide,&sectionPatch);
+        for(const auto& n:checkpoint.chase)if(n.note.beat+n.note.length>beat&&powerForTrack(n.track))instrument.externalNote(n.track,n.note.pitch,n.note.velocity/127.0*controls.composerIntensity,n.note.pan,n.id,true,n.note.accent,n.note.slide,&sectionPatch);
         eventCursor=checkpoint.firstEvent;
-        while(eventCursor<timeline.events.size()&&timeline.events[eventCursor].beat<beat){const auto& e=timeline.events[eventCursor++];if(e.on&&e.endBeat>beat)instrument.externalNote(e.track,e.pitch,e.velocity/127.0*controls.composerIntensity,e.pan,e.id,true,e.accent,e.slide,&sectionPatch);}
+        while(eventCursor<timeline.events.size()&&timeline.events[eventCursor].beat<beat){const auto& e=timeline.events[eventCursor++];if(e.on&&e.endBeat>beat&&powerForTrack(e.track))instrument.externalNote(e.track,e.pitch,e.velocity/127.0*controls.composerIntensity,e.pan,e.id,true,e.accent,e.slide,&sectionPatch);}
     }
-    if(running)while(eventCursor<timeline.events.size()&&timeline.events[eventCursor].beat<=beat+1e-9){const auto& e=timeline.events[eventCursor++];const bool power=e.track==0?controls.bass:e.track==1?controls.pad:e.track==2?controls.arp:controls.drums&&controls.drumSounds[size_t(e.track-3)].enabled;if(e.on&&(!within||!power||controls.composerIntensity<=0))continue;instrument.externalNote(e.track,e.pitch,e.velocity/127.0*controls.composerIntensity,e.pan,e.id,e.on,e.accent,e.slide,&sectionPatch);}
+    if(running)while(eventCursor<timeline.events.size()&&timeline.events[eventCursor].beat<=beat+1e-9){const auto& e=timeline.events[eventCursor++];const bool power=powerForTrack(e.track);if(e.on&&(!within||!power))continue;instrument.externalNote(e.track,e.pitch,e.velocity/127.0*controls.composerIntensity,e.pan,e.id,e.on,e.accent,e.slide,&sectionPatch);}
     if(running&&!controls.composerLoop&&timeline.beats>0&&beat>=timeline.beats){if(auto* p=state.getParameter("composerPlaying"))p->setValueNotifyingHost(0);}
     previousComposerBeat=within?beat:-1;composerBeatDisplay=std::max(0.0,beat);
     auto patch=sectionPatch;patch.autoPlay=false;patch.direct=true;patch.composerEnabled=true;patch.composerPlaying=running;
-    std::array<bool,tracks> enabled{};for(int t=0;t<tracks;++t)enabled[size_t(t)]=(within&&previousTracks[size_t(t)])||ppq<tailUntil[size_t(t)];
+    std::array<bool,tracks> enabled{};for(int t=0;t<tracks;++t)enabled[size_t(t)]=(within&&previousTracks[size_t(t)]&&powerForTrack(t))||ppq<tailUntil[size_t(t)];
     patch.bass=enabled[0]&&controls.bass;patch.pad=enabled[1]&&controls.pad;patch.arp=enabled[2]&&controls.arp;patch.drums=controls.drums&&(enabled[3]||enabled[4]||enabled[5]||enabled[6]);
     if(section>=0){const auto& c=timeline.sections[size_t(section)].clips;patch.bassLevel*=c[0].gain;patch.padLevel*=c[1].gain;patch.arpLevel*=c[2].gain;for(int lane=0;lane<4;++lane)patch.drumSounds[size_t(lane)].level*=c[size_t(lane+3)].gain;}
     for(int lane=0;lane<4;++lane)patch.drumSounds[size_t(lane)].enabled=enabled[size_t(lane+3)]&&controls.drumSounds[size_t(lane)].enabled;
-    patch.fxEnabled=patch.fxEnabled&&controls.fxEnabled;patch.master*=controls.master/.65;patch.separateOutputs=controls.separateOutputs;
+    patch.fxEnabled=patch.fxEnabled&&controls.fxEnabled;patch.master=controls.master;patch.separateOutputs=controls.separateOutputs;
     if(section!=lastResourceSection){instrument.configureResources(patch);lastResourceSection=section;}
     return patch;
 }

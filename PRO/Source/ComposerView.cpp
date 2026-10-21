@@ -163,11 +163,11 @@ void ComposerView::paint(juce::Graphics& g){g.fillAll(juce::Colour(0xff111720));
 void ComposerView::resized(){const int w=getWidth(),half=(w-36)/2;heading.setBounds(12,0,w-24,30);juce::ToggleButton* toggles[]{&enabled,&play,&songMode,&loop,&split,&midiPlay};for(int k=0;k<6;++k)toggles[k]->setBounds(12+k*(w-24)/6,34,(w-30)/6-4,28);
     sceneTitle.setBounds(12,66,half,26);songTitle.setBounds(24+half,66,half,26);scenes.setBounds(12,96,half,164);song->setBounds(24+half,96,half,164);
     const int b=half/5;add.setBounds(12,268,b-4,28);duplicate.setBounds(12+b,268,b-4,28);remove.setBounds(12+2*b,268,b-4,28);launch.setBounds(12+3*b,268,2*b-4,28);
-    append.setBounds(24+half,268,90,28);slotRemove.setBounds(120+half,268,80,28);up.setBounds(206+half,268,34,28);down.setBounds(246+half,268,34,28);repeat.setBounds(286+half,268,110,28);evolve.setBounds(402+half,268,100,28);
-    name.setBounds(72,306,w-330,28);capture.setBounds(w-246,306,144,28);cut.setBounds(w-96,306,84,28);progression.setBounds(72,344,w-84,28);
+    append.setBounds(24+half,268,72,28);slotRemove.setBounds(102+half,268,70,28);up.setBounds(178+half,268,28,28);down.setBounds(212+half,268,28,28);repeat.setBounds(246+half,268,108,28);evolve.setBounds(360+half,268,std::min(100,half-336),28);
+    name.setBounds(72,306,w-370,28);capture.setBounds(w-286,306,144,28);cut.setBounds(w-136,306,124,28);progression.setBounds(72,344,w-84,28);
     bars.setBounds(12,408,150,30);tempo.setBounds(174,408,190,30);intensity.setBounds(376,408,190,30);numerator.setBounds(580,408,58,30);denominator.setBounds(644,408,58,30);save.setBounds(w-192,408,84,30);load.setBounds(w-102,408,90,30);
     clipTitle.setBounds(12,450,w-24,26);for(int t=0;t<7;++t)tracks[size_t(t)].setBounds(12+t*(w-24)/7,482,(w-24)/7-5,30);
-    bar.setBounds(12,546,150,30);octave.setBounds(174,546,150,30);velocity.setBounds(336,546,170,30);notePan.setBounds(518,546,170,30);generated.setBounds(702,546,110,30);freeze.setBounds(w-276,546,150,30);clear.setBounds(w-120,546,108,30);
+    const int cell=(w-24)/7;juce::Component* editors[]{&bar,&octave,&velocity,&notePan,&generated,&freeze,&clear};for(int i=0;i<7;++i)editors[i]->setBounds(12+i*cell,546,cell-6,30);
     grid->setBounds(12,586,w-24,336);gain.setBounds(12,960,200,30);enter.setBounds(224,960,180,30);leave.setBounds(416,960,180,30);threshold.setBounds(608,960,200,30);
     exportScene.setBounds(12,1002,156,30);exportSong.setBounds(178,1002,156,30);exportPack.setBounds(344,1002,156,30);dragMidi->setBounds(510,1002,188,30);message.setBounds(12,1040,w-24,30);
 }

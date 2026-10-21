@@ -475,7 +475,7 @@ public:
     void reset() {
         arpeggiator.reset();drumMachine.reset();arpNoteCount=0;midiRoot=-1;
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
-        for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.age=0; }
+        for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.c={};v.d={};v.shimmer={};v.age=0; }
         bassRack.reset();padRack.reset();masterRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
         anchor=padClock=0;gateUntil=-1;havePosition=wasPlaying=false;voiceSerial=0;dcInL=dcInR=dcOutL=dcOutR=0;
         previousBass=true;previousPad=false;previousDirect=false;

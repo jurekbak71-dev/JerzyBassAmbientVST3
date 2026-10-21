@@ -58,7 +58,7 @@ Wyjścia instrumentów są po ich własnym przetwarzaniu i poziomie Master, prze
 
 ## MIDI sterujące Composer
 
-Domyślnie CC26 = Composer power, 27 = play, 28 = SONG/SCENE, 29 = loop, 30 = wybór sceny (skalowany na 1–32), 31 = globalna intensywność velocity, 32 = split outputs, 33 = MIDI PARTS. CC20–25 zachowują poprzednie znaczenie. CC120 zatrzymuje Composer/GENERATE i czyści głosy. Parametry hosta pozwalają również użyć Link to controller/automatyki FL Studio.
+Domyślnie CC26 = Composer power, 27 = play, 28 = SONG/SCENE, 29 = loop, 30 = wybór sceny (skalowany na 1–32), 31 = globalna intensywność i progi instrumentów, 32 = split outputs, 33 = MIDI PARTS. CC20–25 zachowują poprzednie znaczenie. CC120 zatrzymuje Composer/GENERATE i czyści głosy. Parametry hosta pozwalają również użyć Link to controller/automatyki FL Studio.
 
 ## Windows build na GitHub
 
