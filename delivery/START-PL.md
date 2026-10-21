@@ -47,3 +47,7 @@ Włącz dodatkowe wyjścia w wrapperze wtyczki i przypisz je do insertów mikser
 Kolejność 11 wyjść stereo: MAIN, BASS, PAD, ARP, KICK, SNARE, HI-HAT, AUX, DELAY RETURN, REVERB RETURN, KRELL. Nowy Krell jest na końcu, więc numery wcześniejszych wyjść nie zmieniły się. Osobne wyjścia omijają końcowy limiter MAIN.
 
 Diody IN, ACT, OUT i CLP oznaczają odpowiednio sterowanie wejściowe, aktywne głosy, audio na wyjściu i poziom co najmniej 0 dBFS. Prawoklik resetuje regulator; Ctrl+prawoklik pozwala przypisać MIDI.
+
+### Przeciąganie MIDI do FL Studio
+
+Na dole Composera wybierz **SCENE** (wybrana scena) lub **WHOLE SONG** (cały song z powtórzeniami). Drugi wybór: **SELECTED TRACK** eksportuje zaznaczony instrument do jednego Piano Roll; **ALL TRACKS** tworzy wielościeżkowy plik MIDI do importu w FL Studio. Następnie przeciągnij **DRAG MIDI TO FL**. Eksport songu korzysta z listy SONG, więc najpierw dodaj do niej sceny. Osobne przyciski EXPORT SCENE / EXPORT SONG zapisują wszystkie ścieżki do pliku MIDI.
