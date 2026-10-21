@@ -78,10 +78,10 @@ public:
 class ComposerView::MidiDrag final : public juce::TextButton {
     ComposerView& view;bool started=false;
 public:
-    explicit MidiDrag(ComposerView& v):juce::TextButton("DRAG MIDI TO FL"),view(v){setTooltip("Drag the selected scene/track into FL Studio Piano Roll. Export Song writes all tracks.");}
+    explicit MidiDrag(ComposerView& v):juce::TextButton("DRAG MIDI TO FL"),view(v){setTooltip("Choose SCENE or WHOLE SONG and SELECTED TRACK or ALL TRACKS, then drag this button into FL Studio. Use selected track for one Piano Roll; import all tracks as a multitrack MIDI file.");}
     void mouseDown(const juce::MouseEvent& e) override {started=false;juce::TextButton::mouseDown(e);}
-    void mouseDrag(const juce::MouseEvent& e) override {if(started||e.getDistanceFromDragStart()<8)return;started=true;auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("JerzyPRO-midi");dir.createDirectory();auto file=dir.getNonexistentChildFile("PRO-clip",".mid");auto result=view.processor.exportComposer(file,false,view.selectedScene,view.selectedTrack);
-        if(result.failed()){view.setMessage(result.getErrorMessage());return;}juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,this);}
+    void mouseDrag(const juce::MouseEvent& e) override {if(started||e.getDistanceFromDragStart()<8)return;started=true;auto dir=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("JerzyPRO-midi");dir.createDirectory();const bool wholeSong=view.midiRange.getSelectedId()==2;const int track=view.midiTracks.getSelectedId()==2?-1:view.selectedTrack;auto file=dir.getNonexistentChildFile(wholeSong?"PRO-song":"PRO-scene",".mid");auto result=view.processor.exportComposer(file,wholeSong,view.selectedScene,track);
+        if(result.failed()){view.setMessage(result.getErrorMessage());return;}if(!juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,this))view.setMessage("Cannot start MIDI drag. Use EXPORT SCENE / EXPORT SONG and import the .mid file in FL Studio.");}
 };
 
 ComposerView::ComposerView(BassAmbientProcessor& p):processor(p),sceneModel(std::make_unique<SceneModel>(*this)),songModel(std::make_unique<SongModel>(*this)),song(std::make_unique<SongList>(*this)),grid(std::make_unique<NoteGrid>(*this)),dragMidi(std::make_unique<MidiDrag>(*this)){
@@ -89,6 +89,8 @@ ComposerView::ComposerView(BassAmbientProcessor& p):processor(p),sceneModel(std:
     heading.setText("COMPOSER / ARRANGER  |  SCENES > SONG > MIDI",juce::dontSendNotification);sceneTitle.setText("SCENES   |   BASS / PAD / ARP / KICK / SNARE / HAT / AUX / KRELL",juce::dontSendNotification);songTitle.setText("SONG — drag scenes here; drag slots to reorder",juce::dontSendNotification);
     for(auto* label:{&heading,&sceneTitle,&songTitle,&clipTitle,&message}){label->setColour(juce::Label::textColourId,ink);addAndMakeVisible(label);}
     scenes.setModel(sceneModel.get());song->setModel(songModel.get());scenes.setRowHeight(28);song->setRowHeight(28);addAndMakeVisible(scenes);addAndMakeVisible(*song);addAndMakeVisible(*grid);addAndMakeVisible(*dragMidi);
+    midiRange.addItemList({"SCENE","WHOLE SONG"},1);midiRange.setSelectedId(1);midiRange.setComponentID("composer-midi-range");midiRange.setTooltip("MIDI drag: selected scene or complete arranged song, including repeats.");addAndMakeVisible(midiRange);
+    midiTracks.addItemList({"SELECTED TRACK","ALL TRACKS"},1);midiTracks.setSelectedId(1);midiTracks.setComponentID("composer-midi-tracks");midiTracks.setTooltip("Selected instrument for one Piano Roll, or all instruments for multitrack MIDI import.");addAndMakeVisible(midiTracks);
     juce::ToggleButton* toggles[]{&enabled,&play,&songMode,&loop,&split,&midiPlay};const char* ids[]{"composerEnabled","composerPlaying","composerSongMode","composerLoop","separateOutputs","midiPlayback"};
     for(int i=0;i<6;++i){addAndMakeVisible(*toggles[i]);attachments.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.state,ids[i],*toggles[i]));}
     for(auto* button:{&add,&duplicate,&remove,&launch,&capture,&append,&slotRemove,&up,&down,&freeze,&clear,&exportScene,&exportSong,&exportPack,&save,&load})addAndMakeVisible(*button);
@@ -174,5 +176,5 @@ void ComposerView::resized(){const int w=getWidth(),half=(w-36)/2;heading.setBou
     clipTitle.setBounds(12,450,w-24,26);for(int t=0;t<8;++t)tracks[size_t(t)].setBounds(12+t*(w-24)/8,482,(w-24)/8-5,30);
     const int cell=(w-24)/7;juce::Component* editors[]{&bar,&octave,&velocity,&notePan,&generated,&freeze,&clear};for(int i=0;i<7;++i)editors[i]->setBounds(12+i*cell,546,cell-6,30);
     grid->setBounds(12,586,w-24,336);gain.setBounds(12,960,200,30);enter.setBounds(224,960,180,30);leave.setBounds(416,960,180,30);threshold.setBounds(608,960,200,30);
-    exportScene.setBounds(12,1002,156,30);exportSong.setBounds(178,1002,156,30);exportPack.setBounds(344,1002,156,30);dragMidi->setBounds(510,1002,188,30);message.setBounds(12,1040,w-24,30);
+    exportScene.setBounds(12,1002,156,30);exportSong.setBounds(178,1002,156,30);exportPack.setBounds(344,1002,156,30);midiRange.setBounds(12,1040,156,30);midiTracks.setBounds(178,1040,174,30);dragMidi->setBounds(362,1040,188,30);message.setBounds(12,1080,w-24,30);
 }

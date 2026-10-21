@@ -7,7 +7,7 @@ public:
     void resized() override;
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
-    int requiredHeight() const {return 1080;}
+    int requiredHeight() const {return 1120;}
 private:
     class SceneModel;class SongModel;class SongList;class NoteGrid;class MidiDrag;
     BassAmbientProcessor& processor;
@@ -22,7 +22,7 @@ private:
     juce::Label heading,sceneTitle,songTitle,clipTitle,message;
     juce::TextEditor name,progression;
     juce::Slider bars,tempo,intensity,repeat,bar,octave,velocity,notePan,gain,enter,leave,threshold;
-    juce::ComboBox numerator,denominator;
+    juce::ComboBox numerator,denominator,midiRange,midiTracks;
     juce::ToggleButton enabled{"COMPOSER"},play{"PLAY"},songMode{"SONG"},loop{"LOOP"},split{"SPLIT OUT"},midiPlay{"MIDI PARTS"},generated{"GENERATED"},cut{"CUT TAILS"},evolve{"EVOLVE"};
     std::array<juce::TextButton,8> tracks;
     juce::TextButton add{"NEW"},duplicate{"VARIANT"},remove{"DELETE"},launch{"LAUNCH SCENE"},capture{"CAPTURE SOUND"},append{"+ SONG"},slotRemove{"REMOVE"},up{"<"},down{">"},freeze{"FREEZE / EDIT"},clear{"CLEAR CLIP"},exportScene{"EXPORT SCENE"},exportSong{"EXPORT SONG"},exportPack{"PATTERN PACK"},save{"SAVE"},load{"LOAD"};
