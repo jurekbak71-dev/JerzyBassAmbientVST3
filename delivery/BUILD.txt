@@ -1,0 +1,4 @@
+source_commit=c85665350da87512bf28e82363241ef0b017a556
+platform=Windows-x64-MSVC
+tests=CTest-all-passed
+created_utc=2026-10-21T11:47:08.7556424Z
