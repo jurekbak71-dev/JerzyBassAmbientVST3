@@ -20,7 +20,17 @@ jobs:
       - name: Build Windows Standalone and VST3
         run: cmake --build build-pro --config Release --parallel 2
       - name: Test PRO
-        run: ctest --test-dir build-pro -C Release --output-on-failure
+        shell: pwsh
+        run: |
+          ctest --test-dir build-pro -C Release --output-on-failure
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) {
+            Get-Content 'build-pro/Testing/Temporary/LastTest.log' | Where-Object { $_ -match 'FAIL:|Test Failed|Exception|Error|failed' } | ForEach-Object {
+              $message = $_.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+              Write-Output "::error title=Native CTest::$message"
+            }
+          }
+          exit $testExit
       - name: Package Windows delivery
         shell: pwsh
         run: |
