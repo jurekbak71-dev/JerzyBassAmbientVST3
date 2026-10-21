@@ -1,0 +1,62 @@
+name: Build Jerzy Bass Ambient PRO (Windows)
+on:
+  workflow_dispatch:
+  push:
+    branches: [pro/composer-arranger]
+    paths: ['PRO/**', '.github/workflows/pro-windows.yml']
+permissions:
+  contents: write
+concurrency:
+  group: windows-pro-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure PRO
+        run: cmake -S PRO -B build-pro -G "Visual Studio 17 2022" -A x64 -DPRO_ENABLE_LTO=OFF
+      - name: Build Windows Standalone and VST3
+        run: cmake --build build-pro --config Release --parallel 2
+      - name: Test PRO
+        run: ctest --test-dir build-pro -C Release --output-on-failure
+      - name: Package Windows delivery
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'pro-delivery'
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item 'build-pro/JerzyBassAmbientPRO_artefacts/Release/Standalone/Jerzy Bass Ambient PRO.exe' $dest
+          Compress-Archive -Path 'build-pro/JerzyBassAmbientPRO_artefacts/Release/VST3/Jerzy Bass Ambient PRO.vst3' -DestinationPath "$dest/Jerzy-Bass-Ambient-PRO-VST3-Windows.zip"
+          Copy-Item 'PRO/docs/COMPOSER.md' "$dest/COMPOSER.md"
+          Copy-Item 'PRO/README.md' "$dest/README.md"
+          "source_commit=$env:GITHUB_SHA`nplatform=Windows-x64-MSVC`ntests=CTest-all-passed`ncreated_utc=$([DateTime]::UtcNow.ToString('o'))" | Set-Content "$dest/BUILD.txt"
+          Get-ChildItem $dest -File | Where-Object { $_.Extension -in '.exe','.zip' } | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content "$dest/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jerzy-Bass-Ambient-PRO-Windows-x64
+          path: ${{ runner.temp }}/pro-delivery/
+          if-no-files-found: error
+      - name: Save tested binaries to the dedicated delivery branch
+        shell: pwsh
+        run: |
+          $ref = 'windows/pro-0.4'
+          $remote = git ls-remote origin "refs/heads/$ref"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect delivery branch' }
+          if ($remote) {
+            git fetch origin $ref
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch delivery history' }
+            git checkout --detach FETCH_HEAD
+          } else {
+            git checkout --orphan windows-delivery
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare delivery checkout' }
+          New-Item -ItemType Directory -Force delivery | Out-Null
+          Copy-Item "$env:RUNNER_TEMP/pro-delivery/*" delivery/ -Force
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f delivery/
+          git commit -m "Windows PRO build $env:GITHUB_SHA"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit delivery' }
+          git push origin "HEAD:refs/heads/$ref"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot publish delivery branch' }
