@@ -23,7 +23,7 @@ inline void checkAudioRendering() {
     options.song=false;options.sampleRate=96000;options.tailSeconds=0;options.track=-1;options.stems=true;
     const auto stems=dir.getChildFile("stems");require(BassAmbientProcessor::renderAudio(data,patch,options,stems).wasOk(),"stem export");
     require(stems.findChildFiles(juce::File::findFiles,false,"*.wav").size()==10,"eight instrument stems and two return stems");
-    for(int t=0;t<10;++t){reader=read(stems.getChildFile(juce::String(t<8?trackNames[t]:t==8?"DELAY-RETURN":"REVERB-RETURN")+".wav"));require(reader&&reader->lengthInSamples==24000,"all stems time aligned");}reader.reset();
+    for(int t=0;t<10;++t){reader=read(stems.getChildFile(juce::String(t+1).paddedLeft('0',2)+"-"+juce::String(t<8?trackNames[t]:t==8?"DELAY-RETURN":"REVERB-RETURN")+".wav"));require(reader&&reader->lengthInSamples==24000,"all stems time aligned");}reader.reset();
     // A selected instrument must not contain notes from other parts, even with another part soloed.
     options.stems=false;options.track=1;options.bits=32;options.sampleRate=48000;options.tailSeconds=.1;
     patch.mix0Solo=true;
@@ -33,7 +33,7 @@ inline void checkAudioRendering() {
     require(isolated.hasIdenticalContentTo(reference),"instrument render excludes all other notes and is deterministic");
     options.track=-1;options.stems=true;options.effects=true;options.tailSeconds=.5;patch.mix0Solo=false;patch.mix0Delay=1;patch.mix0Reverb=1;
     const auto wetStems=dir.getChildFile("wet-stems");require(BassAmbientProcessor::renderAudio(data,patch,options,wetStems).wasOk(),"wet stem render");
-    for(const auto* name:{"DELAY-RETURN.wav","REVERB-RETURN.wav"}){reader=read(wetStems.getChildFile(name));juce::AudioBuffer<float> wet(2,int(reader->lengthInSamples));reader->read(&wet,0,wet.getNumSamples(),0,true,true);require(wet.getRMSLevel(0,12000,wet.getNumSamples()-12000)>.00001,"render includes audible send return tails");}reader.reset();
+    for(const auto* name:{"09-DELAY-RETURN.wav","10-REVERB-RETURN.wav"}){reader=read(wetStems.getChildFile(name));juce::AudioBuffer<float> wet(2,int(reader->lengthInSamples));reader->read(&wet,0,wet.getNumSamples(),0,true,true);require(wet.getRMSLevel(0,12000,wet.getNumSamples()-12000)>.00001,"render includes audible send return tails");}reader.reset();
     options.stems=false;file=dir.getChildFile("preserve.wav");require(file.replaceWithText("existing export"),"existing render fixture");
     auto cancelled=BassAmbientProcessor::renderAudio(data,patch,options,file,[](double value){return value<.2;});
     require(cancelled.failed()&&file.loadFileAsString()=="existing export","cancel preserves existing export");

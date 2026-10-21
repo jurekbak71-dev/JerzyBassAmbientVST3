@@ -84,6 +84,19 @@ public:
         if(result.failed()){view.setMessage(result.getErrorMessage());return;}if(!juce::DragAndDropContainer::performExternalDragDropOfFiles({file.getFullPathName()},false,this))view.setMessage("Cannot start MIDI drag. Use EXPORT SCENE / EXPORT SONG and import the .mid file in FL Studio.");}
 };
 
+class ComposerView::AudioDrag final : public juce::TextButton {
+    ComposerView& view;bool started=false;
+public:
+    explicit AudioDrag(ComposerView& v):juce::TextButton("DRAG WAV TO FL"),view(v){setEnabled(false);setTooltip("After rendering a stereo WAV, drag here onto the FL Studio Playlist to create an Audio Clip. For stems, import the numbered WAV files from the exported folder.");}
+    void mouseDown(const juce::MouseEvent& event) override {started=false;juce::TextButton::mouseDown(event);}
+    void mouseDrag(const juce::MouseEvent& event) override {
+        if(started||event.getDistanceFromDragStart()<8)return;started=true;
+        if(!view.renderedAudio.existsAsFile()){view.setMessage("Render a stereo WAV first. The last WAV file must still exist.");return;}
+        if(!juce::DragAndDropContainer::performExternalDragDropOfFiles({view.renderedAudio.getFullPathName()},false,this))
+            view.setMessage("Cannot start WAV drag. Drag the saved WAV from File Explorer onto the FL Studio Playlist.");
+    }
+};
+
 class ComposerView::AudioRenderJob final : public juce::ThreadWithProgressWindow {
     juce::Component::SafePointer<ComposerView> owner;
     Document snapshot;jerzy::Parameters controls;AudioRenderOptions options;juce::File destination;
@@ -98,7 +111,7 @@ public:
         result=BassAmbientProcessor::renderAudio(std::move(snapshot),controls,options,destination,[this](double value){setProgress(value);return !threadShouldExit();});
     }
     void threadComplete(bool cancelled) override {
-        if(owner){owner->renderAudioButton.setEnabled(true);owner->setMessage(cancelled?"Audio render cancelled":result.wasOk()?"Audio saved: "+destination.getFullPathName():result.getErrorMessage());}
+        if(owner){owner->renderAudioButton.setEnabled(true);if(!cancelled&&result.wasOk()&&!options.stems){owner->renderedAudio=destination;owner->dragAudio->setEnabled(true);}owner->setMessage(cancelled?"Audio render cancelled":result.wasOk()?"Audio saved: "+destination.getFullPathName():result.getErrorMessage());}
     }
 };
 
@@ -107,6 +120,7 @@ ComposerView::ComposerView(BassAmbientProcessor& p):processor(p),sceneModel(std:
     heading.setText("COMPOSER / ARRANGER  |  SCENES > SONG > MIDI",juce::dontSendNotification);sceneTitle.setText("SCENES   |   BASS / PAD / ARP / KICK / SNARE / HAT / AUX / KRELL",juce::dontSendNotification);songTitle.setText("SONG — drag scenes here; drag slots to reorder",juce::dontSendNotification);
     for(auto* label:{&heading,&sceneTitle,&songTitle,&clipTitle,&message}){label->setColour(juce::Label::textColourId,ink);addAndMakeVisible(label);}
     scenes.setModel(sceneModel.get());song->setModel(songModel.get());scenes.setRowHeight(28);song->setRowHeight(28);addAndMakeVisible(scenes);addAndMakeVisible(*song);addAndMakeVisible(*grid);addAndMakeVisible(*dragMidi);
+    dragAudio=std::make_unique<AudioDrag>(*this);addAndMakeVisible(*dragAudio);
     audioScope.addItemList({"WAV: SCENE","WAV: SCENE INSTRUMENT","WAV: WHOLE SONG","STEMS: SCENE","STEMS: WHOLE SONG"},1);audioScope.setSelectedId(1);
     audioRate.addItemList({"44.1 kHz","48 kHz","96 kHz"},1);audioRate.setSelectedId(2);
     audioBits.addItemList({"24-bit PCM","32-bit float"},1);audioBits.setSelectedId(1);
@@ -227,5 +241,5 @@ void ComposerView::resized(){const int w=getWidth(),half=(w-36)/2;heading.setBou
     const int cell=(w-24)/7;juce::Component* editors[]{&bar,&octave,&velocity,&notePan,&generated,&freeze,&clear};for(int i=0;i<7;++i)editors[i]->setBounds(12+i*cell,546,cell-6,30);
     grid->setBounds(12,586,w-24,336);gain.setBounds(12,960,200,30);enter.setBounds(224,960,180,30);leave.setBounds(416,960,180,30);threshold.setBounds(608,960,200,30);
     exportScene.setBounds(12,1002,156,30);exportSong.setBounds(178,1002,156,30);exportPack.setBounds(344,1002,156,30);midiRange.setBounds(12,1040,156,30);midiTracks.setBounds(178,1040,174,30);dragMidi->setBounds(362,1040,188,30);audioScope.setBounds(12,1080,210,30);audioRate.setBounds(230,1080,110,30);audioBits.setBounds(348,1080,140,30);
-    audioTail.setBounds(496,1080,130,30);audioFX.setBounds(634,1080,140,30);renderAudioButton.setBounds(782,1080,150,30);message.setBounds(12,1150,w-24,30);
+    audioTail.setBounds(496,1080,130,30);audioFX.setBounds(634,1080,140,30);renderAudioButton.setBounds(782,1080,150,30);dragAudio->setBounds(12,1116,188,30);message.setBounds(12,1150,w-24,30);
 }

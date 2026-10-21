@@ -9,7 +9,7 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
     int requiredHeight() const {return 1200;}
 private:
-    class SceneModel;class SongModel;class SongList;class NoteGrid;class MidiDrag;class AudioRenderJob;
+    class SceneModel;class SongModel;class SongList;class NoteGrid;class MidiDrag;class AudioRenderJob;class AudioDrag;
     BassAmbientProcessor& processor;
     jerzy::composer::Document document;
     std::unique_ptr<SceneModel> sceneModel;std::unique_ptr<SongModel> songModel;
@@ -18,6 +18,8 @@ private:
     std::unique_ptr<NoteGrid> grid;
     std::unique_ptr<MidiDrag> dragMidi;
     std::unique_ptr<AudioRenderJob> audioJob;
+    std::unique_ptr<AudioDrag> dragAudio;
+    juce::File renderedAudio;
     int selectedScene=0,selectedTrack=0,selectedSlot=0,selectedNote=-1;
     uint64_t revision=0;bool updating=false;
     juce::Label heading,sceneTitle,songTitle,clipTitle,message;

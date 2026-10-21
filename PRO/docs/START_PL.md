@@ -63,7 +63,7 @@ Na dole strony COMPOSER wybierz zakres i kliknij **RENDER WAV**:
 - **WAV: SCENE** — wybrana scena, wszystkie aktywne klipy.
 - **WAV: SCENE INSTRUMENT** — zaznaczony instrument z wybranej sceny.
 - **WAV: WHOLE SONG** — cała lista SONG z powtórzeniami i wariantami EVOLVE.
-- **STEMS: SCENE / WHOLE SONG** — folder z ośmioma ścieżkami instrumentów oraz osobnymi DELAY-RETURN i REVERB-RETURN. Wszystkie pliki zaczynają się w tym samym miejscu i mają taką samą długość.
+- **STEMS: SCENE / WHOLE SONG** — folder z ośmioma ścieżkami instrumentów oraz osobnymi DELAY-RETURN i REVERB-RETURN. Wszystkie pliki zaczynają się w tym samym miejscu i mają taką samą długość. Nazwy są numerowane (01-BASS.wav … 07-AUX.wav … 10-REVERB-RETURN.wav), co zapewnia zgodność z nazwami plików Windows.
 
 Wybierz 44,1 / 48 / 96 kHz, WAV 24-bit PCM lub 32-bit float oraz dodatkowy ogon 0 / 5 / 10 / 20 / 45 sekund. TAIL 0 ucina plik na końcu sceny/songu. Dłuższy ogon zachowuje wybrzmiewanie obwiedni i efektów do wybranego limitu; nie jest to automatyczne wykrywanie ciszy.
 
@@ -72,3 +72,5 @@ Wybierz 44,1 / 48 / 96 kHz, WAV 24-bit PCM lub 32-bit float oraz dodatkowy ogon 
 Rendering używa kopii bieżących ustawień i aranżacji. Tempo pochodzi z INTERNAL BPM lub aktualnego tempa hosta/zegara. Nie wymaga uruchomienia transportu ani urządzenia audio. Tak jak LAUNCH SCENE, uruchamia moduły zgodnie z klipami scen; respektuje gain, mute, solo i progi intensywności. Eksport jednego instrumentu pomija SOLO pozostałych instrumentów. SCENE MIX decyduje o odczycie miksera sceny. Zmiany wykonane po otwarciu okna zapisu nie zmieniają już tego renderu.
 
 Postęp widać w osobnym oknie; **Cancel** anuluje operację. Dotychczasowy plik jest zastępowany dopiero po ukończeniu nowego WAV. Stems trafiają do nowego folderu. Przy 24-bit PCM zbyt głośny sygnał może zostać obcięty — do dalszego miksowania wybierz 32-bit float. Maksymalny rozmiar pojedynczego WAV to 4 GB; dłuższe aranżacje eksportuj częściami.
+
+Po ukończeniu stereo WAV aktywuje się **DRAG WAV TO FL**. Przeciągnij ten przycisk na **Playlistę** FL Studio: FL utworzy Audio Clip. Plik pozostaje w wybranej lokalizacji — nie przenoś go ani nie usuwaj, bo projekt FL odwołuje się do niego. Przycisk używa ostatniego udanego renderu stereo w tym oknie; po eksporcie stems przeciągaj numerowane pliki WAV z folderu. Automatyczne wstawianie Audio Clip bez przeciągnięcia nie jest dostępne przez standardowe API VST3.

@@ -51,7 +51,7 @@ juce::Result BassAmbientProcessor::renderAudio(Document document,Parameters cont
         std::vector<std::unique_ptr<juce::AudioFormatWriter>> writers;
         std::vector<juce::File> files;
         for(int t=0;t<outputs;++t) {
-            auto file=stage.getChildFile(options.stems?juce::String(t<8?trackNames[t]:t==8?"DELAY-RETURN":"REVERB-RETURN")+".wav":"render.wav");
+            auto file=stage.getChildFile(options.stems?juce::String(t+1).paddedLeft('0',2)+"-"+juce::String(t<8?trackNames[t]:t==8?"DELAY-RETURN":"REVERB-RETURN")+".wav":"render.wav");
             std::unique_ptr<juce::OutputStream> stream=file.createOutputStream();
             if(!stream)return juce::Result::fail("Cannot open WAV file");
             auto writer=format.createWriterFor(stream,writerOptions);
