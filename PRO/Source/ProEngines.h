@@ -50,6 +50,7 @@ class Arpeggiator {
 public:
     void prepare(double sr) { rate=sr;for(auto& v:voices)v.env.prepare(sr);reset(); }
     void reset() { for(auto& v:voices) {v.env.reset();v.filter.reset();v.a={};v.b={};}previous=std::numeric_limits<int64_t>::min();lastNote=-1; }
+    bool active() const {for(const auto& v:voices)if(v.env.active())return true;return false;}
     int noteDisplay() const {return lastNote;}
     void trigger(int note,double velocity,double pan,double offPPQ,uint32_t id) {
         Voice* selected=nullptr;for(auto& v:voices)if(!v.env.active()){selected=&v;break;}
@@ -77,12 +78,13 @@ public:
 };
 class DrumMachine {
     struct Voice { Oscillator osc,metal; double age=100,velocity=0,filter=0;uint32_t noise=1; };
-    std::array<Voice,4> voices{};double rate=48000;
+    std::array<Voice,4> voices{};std::array<bool,4> sounding{};double rate=48000;
     int64_t previous=std::numeric_limits<int64_t>::min();int position=-1;
 public:
     void prepare(double sr) {rate=sr;reset();}
-    void reset() {voices={};previous=std::numeric_limits<int64_t>::min();position=-1;}
+    void reset() {voices={};sounding={};previous=std::numeric_limits<int64_t>::min();position=-1;}
     std::array<Stereo,4> outputs{};
+    bool active(int lane) const {return sounding[size_t(lane)];}
     int stepDisplay() const {return position;}
     void trigger(int lane,double velocity) {if(lane>=0&&lane<4) { auto& v=voices[size_t(lane)];v.age=0;v.velocity=velocity;v.osc={};v.metal={};v.filter=0;v.noise=hash(uint32_t(lane+1)*71); }}
     Stereo next(const Parameters& p,double ppq,bool running) {
@@ -97,10 +99,12 @@ public:
         Stereo out{};outputs={};
         for(int lane=0;lane<4;++lane) {
             auto& v=voices[size_t(lane)];const auto& s=p.drumSounds[size_t(lane)];
+            sounding[size_t(lane)]=false;
             if(!s.enabled) {v.age=100;continue;}
             const bool open=lane==3&&p.drumAux==1;
             const double decay=clamp(s.decay*(open?2.5:1),.015,3.0);
             if(v.age>decay*9)continue;
+            sounding[size_t(lane)]=true;
             const double amp=std::exp(-v.age/decay);
             v.noise=hash(v.noise);const double noise=double(v.noise)/2147483648.0-1;
             double x=0;
@@ -169,6 +173,7 @@ public:
     }
     void maintenance() {service();}
     Stereo process(Stereo x,const FXParameters& p,double bpm) {return active&&activeMask==mask(p)?active->process(x,p,bpm):x;}
+    Stereo processWet(Stereo x,const FXParameters& p,double bpm) {return active&&activeMask==mask(p)?active->process(x,p,bpm):Stereo{};}
     size_t memoryBytes() const {return active?active->memoryBytes():0;}
 private:
 

@@ -5,6 +5,7 @@ using namespace jerzy::composer;
 juce::AudioProcessor::BusesProperties BassAmbientProcessor::buses(){
     BusesProperties result;result.addBus(false,"MAIN",juce::AudioChannelSet::stereo(),true);
     for(const auto* name:trackNames)result.addBus(false,name,juce::AudioChannelSet::stereo(),false);
+    result.addBus(false,"DELAY RETURN",juce::AudioChannelSet::stereo(),false);result.addBus(false,"REVERB RETURN",juce::AudioChannelSet::stereo(),false);
     return result;
 }
 Document BassAmbientProcessor::composerDocument() const {const juce::ScopedLock lock(composerLock);return composerData;}
@@ -13,6 +14,43 @@ void BassAmbientProcessor::editComposer(const std::function<void(Document&)>& ed
 }
 juce::String BassAmbientProcessor::composerError() const {const juce::ScopedLock lock(composerLock);return composerFailure;}
 void BassAmbientProcessor::serviceComposer(){
+    // Control edits are copied to the selected scene off the audio thread.
+    // Only changed fields are copied: selecting a scene does not overwrite its patch.
+    const auto controls=readParameters();if(controlSnapshotReset.exchange(false))lastControlSnapshot=controls;
+    {const juce::ScopedLock lock(composerLock);bool changed=false;
+        const int selected=juce::jlimit(0,int(composerData.scenes.size())-1,controls.composerScene-1);auto& patch=composerData.scenes[size_t(selected)].patch;
+#define BOOL(f,l,g) if(controls.composerEnabled&&((g)<=4||(g)==6||(g)==7||(controls.sceneMixer&&(g)>=14&&(g)<=21))&&juce::String(#f)!="bass"&&juce::String(#f)!="pad"&&juce::String(#f)!="arp"&&juce::String(#f)!="drums"&&controls.f!=lastControlSnapshot.f){patch.f=controls.f;changed=true;}
+#define FLOAT(f,a,b,s,l,g) if(controls.composerEnabled&&((g)<=4||(g)==6||(g)==7||(controls.sceneMixer&&(g)>=14&&(g)<=21))&&controls.f!=lastControlSnapshot.f){patch.f=controls.f;changed=true;}
+#define INT(f,a,b,l,g) if(controls.composerEnabled&&((g)<=4||(g)==6||(g)==7||(controls.sceneMixer&&(g)>=14&&(g)<=21))&&controls.f!=lastControlSnapshot.f){patch.f=controls.f;changed=true;}
+#define CHOICE(f,l,g,c) if(controls.composerEnabled&&((g)<=4||(g)==6||(g)==7||(controls.sceneMixer&&(g)>=14&&(g)<=21))&&controls.f!=lastControlSnapshot.f){patch.f=controls.f;changed=true;}
+#define CHOICE_DEN(f,l,g) if(controls.composerEnabled&&controls.f!=lastControlSnapshot.f){patch.f=controls.f;changed=true;}
+#include "Parameters.def"
+#undef BOOL
+#undef FLOAT
+#undef INT
+#undef CHOICE
+#undef CHOICE_DEN
+        if(controls.composerEnabled){
+            for(int rack=0;rack<2;++rack){const auto& source=rack==0?controls.padRack:controls.masterRack;const auto& previous=rack==0?lastControlSnapshot.padRack:lastControlSnapshot.masterRack;auto& target=rack==0?patch.padRack:patch.masterRack;
+#define BOOL(f,l,g) if(source.f!=previous.f){target.f=source.f;changed=true;}
+#define FLOAT(f,a,b,s,l,g) if(source.f!=previous.f){target.f=source.f;changed=true;}
+#define CHOICE(f,l,g,c) if(source.f!=previous.f){target.f=source.f;changed=true;}
+#include "FXParameters.def"
+#undef BOOL
+#undef FLOAT
+#undef CHOICE
+                if(source.order!=previous.order){target.order=source.order;changed=true;}
+            }
+            if(controls.order!=lastControlSnapshot.order){patch.order=controls.order;changed=true;}
+            if(controls.masterFX!=lastControlSnapshot.masterFX){patch.masterFX=controls.masterFX;changed=true;}
+            for(int lane=0;lane<4;++lane){const auto& source=controls.drumSounds[size_t(lane)];const auto& previous=lastControlSnapshot.drumSounds[size_t(lane)];auto& target=patch.drumSounds[size_t(lane)];
+                if(source.level!=previous.level||source.drive!=previous.drive||source.tone!=previous.tone||source.cutoff!=previous.cutoff||source.decay!=previous.decay||source.pan!=previous.pan){const bool enabled=target.enabled;target=source;target.enabled=enabled;changed=true;}
+                if(controls.drumGrid[size_t(lane)]!=lastControlSnapshot.drumGrid[size_t(lane)]){patch.drumGrid[size_t(lane)]=controls.drumGrid[size_t(lane)];changed=true;}
+            }
+        }
+        if(controls.internalTempo!=composerData.tempo){composerData.tempo=controls.internalTempo;for(auto& scene:composerData.scenes)scene.patch.internalTempo=composerData.tempo;changed=true;}
+        lastControlSnapshot=controls;if(changed)++composerRevision;
+    }
     delete retiredComposer.exchange(nullptr,std::memory_order_acquire);
     const auto revision=composerRevision.load(std::memory_order_acquire);
     if(revision==compiledRevision||pendingComposer.load(std::memory_order_acquire))return;
@@ -23,7 +61,7 @@ void BassAmbientProcessor::adoptComposer(){
     if(retiredComposer.load(std::memory_order_acquire))return;
     if(auto* ready=pendingComposer.exchange(nullptr,std::memory_order_acquire)){
         if(activeComposer)retiredComposer.store(activeComposer,std::memory_order_release);
-        activeComposer=ready;playback=nullptr;wasComposerPlaying=false;sectionIndex=-1;previousComposerBeat=-1;instrument.allOff();
+        activeComposer=ready;playback=wasSongMode?&ready->song:&ready->scenes[size_t(juce::jlimit(0,int(ready->scenes.size())-1,playingScene))];sectionIndex=-1;previousComposerBeat=-1;eventCursor=0;instrument.allOff();
     }
 }
 void BassAmbientProcessor::launchComposer(int scene,bool song){
@@ -62,7 +100,7 @@ Parameters BassAmbientProcessor::composerSample(const Parameters& controls,doubl
             if(part.cutTails) {instrument.reset();tailUntil.fill(0);lastResourceSection=-2;}
             for(int t=0;t<tracks;++t){enabled[size_t(t)]=part.clips[size_t(t)].enabled;
                 if(previousTracks[size_t(t)]&&!enabled[size_t(t)]&&!part.cutTails){const double release=t==0?previous.bassRelease:t==1?previous.padRelease:t==2?previous.arpRelease:2;tailUntil[size_t(t)]=ppq+tempo/60*std::min(45.0,release+(previous.fxEnabled?8:0));}}
-            composerSceneDisplay=part.sceneId;composerSlotDisplay=part.slot;
+            clockBarBeats=double(part.numerator)*4/std::max(1,part.denominator);composerSceneDisplay=part.sceneId;composerSlotDisplay=part.slot;
         }else for(int t=0;t<tracks;++t)if(previousTracks[size_t(t)])tailUntil[size_t(t)]=ppq+tempo/60*std::min(45.0,std::max({previous.padRelease,previous.arpRelease,previous.bassRelease})+8);
         previousTracks=enabled;sectionIndex=section;
     }
@@ -73,7 +111,7 @@ Parameters BassAmbientProcessor::composerSample(const Parameters& controls,doubl
         eventCursor=checkpoint.firstEvent;
         while(eventCursor<timeline.events.size()&&timeline.events[eventCursor].beat<beat){const auto& e=timeline.events[eventCursor++];if(e.on&&e.endBeat>beat&&powerForTrack(e.track))instrument.externalNote(e.track,e.pitch,e.velocity/127.0*controls.composerIntensity,e.pan,e.id,true,e.accent,e.slide,&sectionPatch);}
     }
-    if(running)while(eventCursor<timeline.events.size()&&timeline.events[eventCursor].beat<=beat+1e-9){const auto& e=timeline.events[eventCursor++];const bool power=powerForTrack(e.track);if(e.on&&(!within||!power))continue;instrument.externalNote(e.track,e.pitch,e.velocity/127.0*controls.composerIntensity,e.pan,e.id,e.on,e.accent,e.slide,&sectionPatch);}
+    if(running)while(eventCursor<timeline.events.size()&&timeline.events[eventCursor].beat<=beat+1e-9){const auto& e=timeline.events[eventCursor++];const bool power=powerForTrack(e.track);if(e.on&&(!within||!power))continue;if(e.on)inputPulse[size_t(e.track)]=int(sr*.15);instrument.externalNote(e.track,e.pitch,e.velocity/127.0*controls.composerIntensity,e.pan,e.id,e.on,e.accent,e.slide,&sectionPatch);}
     if(running&&!controls.composerLoop&&timeline.beats>0&&beat>=timeline.beats){if(auto* p=state.getParameter("composerPlaying"))p->setValueNotifyingHost(0);}
     previousComposerBeat=within?beat:-1;composerBeatDisplay=std::max(0.0,beat);
     auto patch=sectionPatch;patch.autoPlay=false;patch.direct=true;patch.composerEnabled=true;patch.composerPlaying=running;
@@ -81,7 +119,16 @@ Parameters BassAmbientProcessor::composerSample(const Parameters& controls,doubl
     patch.bass=enabled[0]&&controls.bass;patch.pad=enabled[1]&&controls.pad;patch.arp=enabled[2]&&controls.arp;patch.drums=controls.drums&&(enabled[3]||enabled[4]||enabled[5]||enabled[6]);
     if(section>=0){const auto& c=timeline.sections[size_t(section)].clips;patch.bassLevel*=c[0].gain;patch.padLevel*=c[1].gain;patch.arpLevel*=c[2].gain;for(int lane=0;lane<4;++lane)patch.drumSounds[size_t(lane)].level*=c[size_t(lane+3)].gain;}
     for(int lane=0;lane<4;++lane)patch.drumSounds[size_t(lane)].enabled=enabled[size_t(lane+3)]&&controls.drumSounds[size_t(lane)].enabled;
-    patch.fxEnabled=patch.fxEnabled&&controls.fxEnabled;patch.master=controls.master;patch.separateOutputs=controls.separateOutputs;
+    if(!controls.sceneMixer){
+#define BOOL(f,l,g) patch.f=controls.f;
+#define FLOAT(f,a,b,s,l,g) patch.f=controls.f;
+#define CHOICE(f,l,g,c) patch.f=controls.f;
+#include "MixerParameters.def"
+#undef BOOL
+#undef FLOAT
+#undef CHOICE
+    }
+    patch.fxEnabled=patch.fxEnabled&&controls.fxEnabled;patch.master=controls.master;patch.limiter=controls.limiter;patch.sendDelayPower=patch.sendDelayPower&&controls.sendDelayPower;patch.sendReverbPower=patch.sendReverbPower&&controls.sendReverbPower;patch.separateOutputs=controls.separateOutputs;
     if(section!=lastResourceSection){instrument.configureResources(patch);lastResourceSection=section;}
     return patch;
 }
@@ -92,11 +139,11 @@ void BassAmbientProcessor::routePartMidi(const juce::MidiMessage& m,const Parame
     instrument.externalNote(track,m.getNoteNumber(),m.getFloatVelocity(),0,id,m.isNoteOn(),false,false,&patch);
 }
 juce::Result BassAmbientProcessor::exportComposer(const juce::File& file,bool song,int scene,int track) const {
-    try{const auto data=composerDocument();const auto result=compile(data);if(!song&&(scene<0||scene>=int(result.scenes.size())))return juce::Result::fail("Select a scene");return writeMidi(song?result.song:result.scenes[size_t(scene)],data.tempo,file,track);}
+    try{auto data=composerDocument();data.tempo=readParameters().clockSource==0?readParameters().internalTempo:tempoDisplay.load();const auto result=compile(data);if(!song&&(scene<0||scene>=int(result.scenes.size())))return juce::Result::fail("Select a scene");return writeMidi(song?result.song:result.scenes[size_t(scene)],data.tempo,file,track);}
     catch(const std::exception& e){return juce::Result::fail(e.what());}
 }
 juce::Result BassAmbientProcessor::saveComposer(const juce::File& file) const {const auto xml=toTree(composerDocument()).createXml();return xml&&file.replaceWithText(xml->toString())?juce::Result::ok():juce::Result::fail("Cannot save Composer project");}
 juce::Result BassAmbientProcessor::loadComposer(const juce::File& file){
     if(file.getSize()>16*1024*1024)return juce::Result::fail("Composer project exceeds 16 MB");
-    try{const auto xml=juce::XmlDocument::parse(file);if(!xml)return juce::Result::fail("Invalid Composer file");auto document=fromTree(juce::ValueTree::fromXml(*xml));editComposer([&](auto& d){d=std::move(document);});return juce::Result::ok();}catch(const std::exception& e){return juce::Result::fail(e.what());}
+    try{const auto xml=juce::XmlDocument::parse(file);if(!xml)return juce::Result::fail("Invalid Composer file");auto document=fromTree(juce::ValueTree::fromXml(*xml));setParameterValue("internalTempo",float(document.tempo));editComposer([&](auto& d){d=std::move(document);});return juce::Result::ok();}catch(const std::exception& e){return juce::Result::fail(e.what());}
 }

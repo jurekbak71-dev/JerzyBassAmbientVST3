@@ -3,6 +3,7 @@
 #include "Core.h"
 #include "ComposerIO.h"
 #include <thread>
+#include "MidiClock.h"
 
 struct ParameterSpec {
     juce::String id,label; int group=0; int kind=0;
@@ -47,6 +48,11 @@ public:
     void requestPanic() {panicRequested=true;}
     void setParameterValue(const juce::String& id,float value);
 
+    std::array<std::atomic<float>,9> channelPeak{};
+    std::array<std::atomic<int>,7> inputPulse{},activePulse{};
+    std::atomic<double> tempoDisplay{120},beatDisplay{0},clockBarBeats{4};
+    std::atomic<int> clockStatus{0};
+    void transport(bool play);
     void applyPreset(int preset);
     jerzy::composer::Document composerDocument() const;
     void editComposer(const std::function<void(jerzy::composer::Document&)>& edit);
@@ -70,7 +76,7 @@ private:
     size_t eventCursor=0;int sectionIndex=-1,playingScene=-1,lastResourceSection=-2;
     double composerOrigin=0,previousComposerBeat=-1,lastComposerPPQ=-1;
     bool wasComposerPlaying=false,wasSongMode=false;
-    jerzy::Parameters sectionPatch;
+    jerzy::Parameters sectionPatch,lastControlSnapshot;
     std::array<double,7> tailUntil{};
     std::array<bool,7> previousTracks{};
     void serviceComposer();
@@ -83,9 +89,11 @@ private:
     jerzy::Instrument instrument;
     jerzy::Parameters current;
     double sr=48000, localPPQ=0;
-    std::atomic<bool> resetRequested{false},panicRequested{false},stopWorker{true};
+    ProMidiClock midiClock;int64_t clockSamples=0;int previousClock=-1;
+    std::atomic<bool> controlSnapshotReset{false},resetRequested{false},panicRequested{false},stopWorker{true};
     std::thread resourceWorker;
     std::vector<juce::RangedAudioParameter*> hostParameters;
+    std::vector<int> parameterGroups;
     juce::RangedAudioParameter* generateParameter=nullptr;
     std::array<std::atomic<int>,128> ccMap{};
     std::atomic<int> learnParameter{-1};

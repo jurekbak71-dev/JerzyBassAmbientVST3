@@ -10,7 +10,7 @@ inline constexpr int midiChannels[]{1,2,3,10,10,10,10};
 inline constexpr int drumNotes[]{36,38,42,39};
 struct Note {double beat=0,length=.25;int pitch=60,velocity=100;double pan=0;bool accent=false,slide=false;};
 struct Clip {
-    bool enabled=true,generated=true;double gain=1,threshold=0;int enterBar=0,leaveBar=0;
+    bool enabled=true,generated=true,explicitRoots=false;double gain=1,threshold=0;int enterBar=0,leaveBar=0;
     std::vector<Note> notes;
 };
 struct Chord {int root=36,quality=1;};
@@ -67,7 +67,7 @@ inline Document factoryDocument() {
 }
 inline bool activeAt(const Scene& s,int track,double beat) {const auto& c=s.clips[size_t(track)];const int bar=int(beat/s.barBeats());return s.intensity>0&&s.intensity>=c.threshold&&c.enabled&&c.gain>0&&bar>=c.enterBar&&(!c.leaveBar||bar<c.leaveBar);}
 inline Chord chordAt(const Scene& s,double beat){return s.chords[size_t(int(beat/s.barBeats()))%s.chords.size()];}
-inline std::vector<Note> generateClip(const Scene& s,int track,int variant=0) {
+inline std::vector<Note> generateLegacyClip(const Scene& s,int track,int variant=0) {
     const auto& clip=s.clips[size_t(track)];if(!clip.generated)return clip.notes;
     auto p=s.patch;p.seed=int((uint32_t(p.seed)^hash(uint32_t(variant)))%65535)+1;
     std::vector<Note> result;
@@ -86,11 +86,42 @@ inline std::vector<Note> generateClip(const Scene& s,int track,int variant=0) {
         const double period=divisionBeats(division),swing=track==0?p.swing:track==2?p.arpSwing:p.drumSwing;
         const int count=int(std::ceil(s.beats()/period));
         for(int k=0;k<count;++k){const double beat=k*period+(k%2?period*swing*.5:0);if(beat>=s.beats())break;const auto c=chordAt(s,beat);Note n;n.beat=beat;
-            if(track==0){const auto step=makeStep(p,k,std::max(1,count));if(step.rest)continue;n.pitch=clamp(c.root+scaleOffset(step.degree,p.scale)+12*step.octave,12,108);n.velocity=int(step.velocity*115);n.length=period*step.length;n.slide=step.slide;n.accent=step.accent;}
+            if(track==0){const auto step=makeStep(p,k,std::max(1,int(std::lround(s.barBeats()*p.bars/period))));if(step.rest)continue;n.pitch=clamp(c.root+scaleOffset(step.degree,p.scale)+12*step.octave,12,108);n.velocity=int(step.velocity*115);n.length=period*step.length;n.slide=step.slide;n.accent=step.accent;}
             else if(track==2){auto arp=p;arp.chord=c.quality;const auto e=makeArpEvent(arp,k,nullptr,0,c.root);if(e.note<0)continue;n.pitch=e.note;n.velocity=int(e.velocity*110);n.length=period*e.gate;n.pan=e.pan;}
             else {const int lane=track-3,index=k%clamp(p.drumLength,1,64);const auto velocity=p.drumGrid[size_t(lane)][size_t(index)];if(velocity<=0)continue;n.pitch=lane==3?(p.drumAux==1?46:p.drumAux==2?45:39):drumNotes[lane];n.velocity=int(velocity*(1-p.drumHumanize*.35*unit(uint32_t(p.seed),uint32_t(k)*7+uint32_t(lane))));n.length=std::min(.12,period*.8);n.pan=p.drumSounds[size_t(lane)].pan;}
             n.length=std::min(n.length,s.beats()-beat);n.velocity=clamp(n.velocity,1,127);result.push_back(n);
         }
+    }
+    return result;
+}
+// MODULE clips store root gates; empty root clips follow the scene progression.
+inline std::vector<Note> rootClip(const Scene& s,int track) {
+    const auto& clip=s.clips[size_t(track)];
+    if(clip.explicitRoots||!clip.notes.empty())return clip.notes;
+    std::vector<Note> roots;
+    for(int bar=0;bar<s.bars;++bar)roots.push_back({bar*s.barBeats(),s.barBeats(),chordAt(s,bar*s.barBeats()).root,100,0});
+    return roots;
+}
+inline std::vector<Note> generateClip(const Scene& s,int track,int variant=0) {
+    const auto& clip=s.clips[size_t(track)];
+    if(!clip.generated||track>=3)return generateLegacyClip(s,track,variant);
+    const auto roots=rootClip(s,track);std::vector<Note> result;
+    // A root gate owns its whole phrase. The latest overlapping root wins.
+    auto ordered=roots;std::stable_sort(ordered.begin(),ordered.end(),[](const Note& a,const Note& b){return a.beat<b.beat;});
+    for(size_t i=0;i<ordered.size();++i){const auto& root=ordered[i];
+        const double end=std::min({s.beats(),root.beat+root.length,i+1<ordered.size()?ordered[i+1].beat:s.beats()});
+        if(end<=root.beat)continue;
+        Scene phrase=s;phrase.clips[size_t(track)].notes.clear();
+        const int quality=chordAt(s,root.beat).quality;phrase.chords={{root.pitch,quality}};
+        std::vector<Note> notes;
+        if(track==1&&phrase.patch.padMode!=2){
+            static constexpr int intervals[8][4]={{0,4,7,12},{0,3,7,12},{0,7,12,19},{0,5,7,12},{0,3,7,10},{0,4,7,11},{0,3,10,14},{0,4,11,14}};
+            const double duration=end-root.beat;
+            const double cycle=phrase.patch.padMode==0?duration:std::max(.125,phrase.patch.evolution*phrase.patch.internalTempo/60);
+            for(double at=0;at<duration;at+=cycle)for(int voice=0;voice<4;++voice)notes.push_back({at,std::min(cycle,duration-at),clamp(root.pitch+12+intervals[quality][voice],12,108),90,(-.8+voice*.53)*phrase.patch.spread});
+        }else notes=generateLegacyClip(phrase,track,variant);
+        // Generate on a local clock so each root starts its module phrase immediately.
+        for(auto n:notes){if(n.beat>=end-root.beat)break;n.beat+=root.beat;n.length=std::min(n.length,end-n.beat);n.velocity=clamp(int(n.velocity*root.velocity/100.0),1,127);n.pan=clamp(n.pan+root.pan,-1.0,1.0);result.push_back(n);}
     }
     return result;
 }

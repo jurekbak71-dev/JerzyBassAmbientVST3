@@ -57,6 +57,64 @@ struct Parameters : FXParameters {
     double drumSwing=0, drumLevel=.6, drumHumanize=.15;
     std::array<DrumSettings,4> drumSounds{{DrumSettings{},DrumSettings{},DrumSettings{.7,.1,.5,12000,.06,0,true},DrumSettings{}}};
     std::array<std::array<int,64>,4> drumGrid=defaultDrumGrid();
+    double mix0Gain=1;
+    double mix0Pan=0;
+    double mix0Delay=0;
+    double mix0Reverb=0;
+    bool mix0Mute=false;
+    bool mix0Solo=false;
+    double mix1Gain=1;
+    double mix1Pan=0;
+    double mix1Delay=0;
+    double mix1Reverb=0;
+    bool mix1Mute=false;
+    bool mix1Solo=false;
+    double mix2Gain=1;
+    double mix2Pan=0;
+    double mix2Delay=0;
+    double mix2Reverb=0;
+    bool mix2Mute=false;
+    bool mix2Solo=false;
+    double mix3Gain=1;
+    double mix3Pan=0;
+    double mix3Delay=0;
+    double mix3Reverb=0;
+    bool mix3Mute=false;
+    bool mix3Solo=false;
+    double mix4Gain=1;
+    double mix4Pan=0;
+    double mix4Delay=0;
+    double mix4Reverb=0;
+    bool mix4Mute=false;
+    bool mix4Solo=false;
+    double mix5Gain=1;
+    double mix5Pan=0;
+    double mix5Delay=0;
+    double mix5Reverb=0;
+    bool mix5Mute=false;
+    bool mix5Solo=false;
+    double mix6Gain=1;
+    double mix6Pan=0;
+    double mix6Delay=0;
+    double mix6Reverb=0;
+    bool mix6Mute=false;
+    bool mix6Solo=false;
+    double sendDelayReturn=.7,sendReverbReturn=.7,sendFeedback=.35,sendRoom=.7;
+    int sendDivision=1,clockSource=0;
+    bool sendDelayPower=true,sendReverbPower=true,transportRun=false,sceneMixer=false;
+    struct Mix { double gain,pan,delay,reverb;bool mute,solo; };
+    Mix mix(int track) const {
+        switch(track) {
+        case 0:return {mix0Gain,mix0Pan,mix0Delay,mix0Reverb,mix0Mute,mix0Solo};
+        case 1:return {mix1Gain,mix1Pan,mix1Delay,mix1Reverb,mix1Mute,mix1Solo};
+        case 2:return {mix2Gain,mix2Pan,mix2Delay,mix2Reverb,mix2Mute,mix2Solo};
+        case 3:return {mix3Gain,mix3Pan,mix3Delay,mix3Reverb,mix3Mute,mix3Solo};
+        case 4:return {mix4Gain,mix4Pan,mix4Delay,mix4Reverb,mix4Mute,mix4Solo};
+        case 5:return {mix5Gain,mix5Pan,mix5Delay,mix5Reverb,mix5Mute,mix5Solo};
+        case 6:return {mix6Gain,mix6Pan,mix6Delay,mix6Reverb,mix6Mute,mix6Solo};
+        default:return {1,0,0,0,false,false};
+        }
+    }
     static std::array<std::array<int,64>,4> defaultDrumGrid() {
         std::array<std::array<int,64>,4> grid{};
         for(int k=0;k<64;++k) { grid[0][k]=(k%4==0?110:0);grid[1][k]=(k%8==4?100:0);grid[2][k]=(k%2==0?75:0);grid[3][k]=(k%16==12?70:0); }
@@ -180,6 +238,8 @@ class BassVoice {
     bool connected=false, accented=false;
     Oscillator o1,o2,subOsc; Ladder filter; Envelope env;
 public:
+    bool active() const {return env.active();}
+
     void prepare(double sr) { rate=sr; env.prepare(sr); reset(); }
     void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false; }
     void note(int n,double v,bool legato,bool accent) {
@@ -410,7 +470,8 @@ class Instrument {
     uint32_t voiceSerial=0;
     BassVoice bass;
     std::array<PadVoice,12> pads;
-    ManagedRack bassRack,padRack,masterRack;
+    ManagedRack bassRack,padRack,masterRack,delaySendRack,reverbSendRack;
+    std::array<Stereo,2> returns{};
     Arpeggiator arpeggiator;DrumMachine drumMachine;
     std::array<Stereo,7> stems{};uint32_t externalBassId=0;
     std::array<int,128> arpNotes{};int arpNoteCount=0;
@@ -471,22 +532,31 @@ class Instrument {
         } else if(latest) velocity=latest->velocity;
     }
 public:
-    void prepare(double sr) { rate=sr;arpeggiator.prepare(sr);drumMachine.prepare(sr);bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);reset(); }
+    void prepare(double sr) { rate=sr;arpeggiator.prepare(sr);drumMachine.prepare(sr);bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);delaySendRack.prepare(sr);reverbSendRack.prepare(sr);reset(); }
     void reset() {
         arpeggiator.reset();drumMachine.reset();arpNoteCount=0;midiRoot=-1;
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
         for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.c={};v.d={};v.shimmer={};v.age=0; }
-        bassRack.reset();padRack.reset();masterRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
+        bassRack.reset();padRack.reset();masterRack.reset();delaySendRack.reset();reverbSendRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
         anchor=padClock=0;gateUntil=-1;havePosition=wasPlaying=false;voiceSerial=0;dcInL=dcInR=dcOutL=dcOutR=0;
         previousBass=true;previousPad=false;previousDirect=false;
     }
+    static FXParameters sendPatch(const Parameters& p,bool delay) {
+        FXParameters fx;fx.fxDrive=fx.fxChorus=fx.fxGrain=fx.fxWidth=false;fx.fxDelay=delay;fx.fxReverb=!delay;
+        fx.delayMix=fx.reverbMix=1;fx.feedback=p.sendFeedback;fx.delayDivision=p.sendDivision;fx.delayType=0;fx.reverbSize=p.sendRoom;return fx;
+    }
     void configureResources(const Parameters& p) {
+        bool delayNeeded=false,reverbNeeded=false;for(int t=0;t<7;++t){delayNeeded|=p.mix(t).delay>0;reverbNeeded|=p.mix(t).reverb>0;}
+        const bool source=p.bass||p.pad||p.arp||p.drums;
+        delaySendRack.configure(sendPatch(p,true),source&&delayNeeded&&p.fxEnabled&&p.sendDelayPower&&p.sendDelayReturn>0);
+        reverbSendRack.configure(sendPatch(p,false),source&&reverbNeeded&&p.fxEnabled&&p.sendReverbPower&&p.sendReverbReturn>0);
         bassRack.configure(p,p.fxEnabled&&p.bass&&p.bassFX>0);
         padRack.configure(p.padRack,p.fxEnabled&&p.pad&&p.padFX>0);
         masterRack.configure(p.masterRack,p.fxEnabled&&p.masterFX>0&&(p.bass||p.pad||p.arp||p.drums));
     }
-    void serviceResources() {bassRack.maintenance();padRack.maintenance();masterRack.maintenance();}
-    size_t fxMemoryBytes() const {return bassRack.memoryBytes()+padRack.memoryBytes()+masterRack.memoryBytes();}
+    void serviceResources() {bassRack.maintenance();padRack.maintenance();masterRack.maintenance();delaySendRack.maintenance();reverbSendRack.maintenance();}
+    size_t fxMemoryBytes() const {return bassRack.memoryBytes()+padRack.memoryBytes()+masterRack.memoryBytes()+delaySendRack.memoryBytes()+reverbSendRack.memoryBytes();}
+    const std::array<Stereo,2>& returnOutputs() const {return returns;}
     const std::array<Stereo,7>& stemOutputs() const {return stems;}
     void externalNote(int track,int note,double velocity,double pan,uint32_t id,bool on,bool accent=false,bool slide=false,const Parameters* patch=nullptr) {
         if(track==0){if(on){externalBassId=id;bass.note(note,velocity,slide,accent);}else if(externalBassId==id)bass.off();}
@@ -500,6 +570,10 @@ public:
     }
     int drumPosition() const {return drumMachine.stepDisplay();}
     int arpNoteDisplay() const {return arpeggiator.noteDisplay();}
+    std::array<bool,7> activeTracks() const {
+        std::array<bool,7> result{};result[0]=bass.active();for(const auto& v:pads)result[1]|=v.env.active();result[2]=arpeggiator.active();
+        for(int i=0;i<4;++i)result[size_t(i+3)]=drumMachine.active(i);return result;
+    }
     int currentRoot() const {return root;}
     int64_t stepPosition() const { return lastStep; }
     void allOff() { arpeggiator.reset();drumMachine.reset();midiRoot=-1;arpNoteCount=0;held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
@@ -613,10 +687,25 @@ public:
         if(p.drums)drumMachine.next(p,ppq,!external&&(wasPlaying||root>=0||p.autoPlay));
         stems={dryBass,dryPad,arpOut};
         if(p.drums)for(int lane=0;lane<4;++lane)stems[size_t(lane+3)]=drumMachine.outputs[size_t(lane)];
-        Stereo out{};for(int track=0;track<7;++track){if(!(splitMask&(1U<<track)))out=out+stems[size_t(track)];stems[size_t(track)]=stems[size_t(track)]*p.master;}
+        bool solo=false;for(int t=0;t<7;++t)solo|=p.mix(t).solo;
+        Stereo out{},delayInput{},reverbInput{};
+        for(int track=0;track<7;++track){const auto mix=p.mix(track);auto& stem=stems[size_t(track)];
+            // Balance preserves original stereo at centre, including ARP ping-pong.
+            const double gain=mix.mute||(solo&&!mix.solo)?0:mix.gain;
+            stem={stem.l*gain*(mix.pan>0?1-mix.pan:1),stem.r*gain*(mix.pan<0?1+mix.pan:1)};
+            delayInput=delayInput+stem*mix.delay;reverbInput=reverbInput+stem*mix.reverb;
+            if(!(splitMask&(1U<<track)))out=out+stem;
+            stem=stem*p.master;
+        }
+        returns={};
+        if(p.fxEnabled&&p.sendDelayPower)returns[0]=delaySendRack.processWet(delayInput,sendPatch(p,true),bpm)*p.sendDelayReturn;
+        if(p.fxEnabled&&p.sendReverbPower)returns[1]=reverbSendRack.processWet(reverbInput,sendPatch(p,false),bpm)*p.sendReverbReturn;
+        for(int k=0;k<2;++k){if(!(splitMask&(1U<<(7+k))))out=out+returns[size_t(k)];returns[size_t(k)]=returns[size_t(k)]*p.master;}
+
         if(p.fxEnabled&&p.masterFX>0) out=out*(1-p.masterFX)+masterRack.process(out,p.masterRack,bpm)*p.masterFX;
         out=out*p.master;
-        if(!p.bass&&!p.pad&&!p.arp&&!p.drums) {dcInL=dcInR=dcOutL=dcOutR=0;return {};}
+
+        if(!p.bass&&!p.pad&&!p.arp&&!p.drums&&std::abs(returns[0].l)+std::abs(returns[0].r)+std::abs(returns[1].l)+std::abs(returns[1].r)<1e-15){dcInL=dcInR=dcOutL=dcOutR=0;return {};}
         const double dcCoefficient=std::exp(-2*pi*5/rate);
         double l=out.l-dcInL+dcCoefficient*dcOutL,r=out.r-dcInR+dcCoefficient*dcOutR;
         dcInL=out.l;dcInR=out.r;dcOutL=l;dcOutR=r;

@@ -53,3 +53,5 @@ INT(composerScene,1,32,"Composer scene",13)
 FLOAT(composerIntensity,0,1,1,"Composer intensity",13)
 BOOL(separateOutputs,"Separate mixer outputs",13)
 BOOL(midiPlayback,"Play imported MIDI parts",13)
+
+#include "MixerParameters.def"

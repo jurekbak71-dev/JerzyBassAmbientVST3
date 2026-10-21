@@ -1,3 +1,7 @@
+# PRO 0.5 performance update
+
+See [PERFORMANCE.md](docs/PERFORMANCE.md) for MANUAL/MODULE, Mixer, LEDs and clock controls.
+
 # Jerzy Bass Ambient PRO — 0.4.0 development
 
 Osobny instrument VST3 / Standalone. Projekt bazowy 0.2.0 w katalogu głównym pozostaje osobnym produktem. PRO ma nową nazwę, bundle ID `pl.jerzy.bassambient.pro` i kod `Jbpr`; nie podmienia starej wtyczki ani automatycznie jej instancji w sesjach.

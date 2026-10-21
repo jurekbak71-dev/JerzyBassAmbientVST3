@@ -143,10 +143,10 @@ int main() {
         const auto projectFile=file.withFileExtension("jpro");require(processor.saveComposer(projectFile).wasOk(),"Composer project save");
         processor.editComposer([](auto& d){d.scenes[0].name="CHANGED";});require(processor.loadComposer(projectFile).wasOk(),"Composer project load");require(processor.composerDocument().scenes[0].name==project.scenes[0].name,"project names restored");
         processor.getStateInformation(state);processor.editComposer([](auto& d){d.song.clear();});processor.setStateInformation(state.getData(),int(state.getSize()));require(processor.composerDocument().song.size()==1,"Composer embedded in host state");
-        auto buses=processor.getBusesLayout();require(buses.outputBuses.size()==8,"eight VST3 audio buses");for(auto& layout:buses.outputBuses)layout=juce::AudioChannelSet::stereo();require(processor.setBusesLayout(buses),"enable all mixer outputs");
+        auto buses=processor.getBusesLayout();require(buses.outputBuses.size()==10,"MAIN, seven instruments and two FX return buses");for(auto& layout:buses.outputBuses)layout=juce::AudioChannelSet::stereo();require(processor.setBusesLayout(buses),"enable all mixer outputs");
         auto mono=buses;mono.outputBuses.set(1,juce::AudioChannelSet::mono());std::cout<<"Mono stem: "<<mono.outputBuses[1].getDescription()<<" direct="<<processor.isBusesLayoutSupported(mono)<<" checked="<<processor.checkBusesLayoutSupported(mono)<<"\n";require(!processor.checkBusesLayoutSupported(mono),"reject unsupported stem layout");
         processor.prepareToPlay(48000,128);set("separateOutputs",1);set("fxEnabled",0);processor.launchComposer(0,true);host.ppq=0;host.playing=true;
-        juce::AudioBuffer<float> multi(16,128);double mainSum=0;std::array<double,7> energies{};
+        juce::AudioBuffer<float> multi(20,128);double mainSum=0;std::array<double,7> energies{};
         for(int block=0;block<100;++block){midi.clear();processor.processBlock(multi,midi);for(int k=0;k<128;++k){mainSum+=std::abs(multi.getSample(0,k))+std::abs(multi.getSample(1,k));for(int t=0;t<7;++t)energies[size_t(t)]+=std::abs(multi.getSample(2+t*2,k))+std::abs(multi.getSample(3+t*2,k));}host.ppq+=128.0/24000;}
         require(mainSum==0,"MAIN does not double routed stems");for(double energy:energies)require(energy>.001,"every FL mixer output carries its instrument");
         for(int block=100;block<1650;++block){processor.processBlock(multi,midi);host.ppq+=128.0/24000;}
@@ -159,15 +159,29 @@ int main() {
         for(int block=0;block<20;++block){processor.processBlock(multi,midi);for(int k=0;k<128;++k)directPad+=std::abs(multi.getSample(4,k))+std::abs(multi.getSample(5,k));host.ppq+=128.0/24000;}
         require(directPad>.001,"first imported MIDI note survives switching from Composer");set("midiPlayback",0);
 
-        for(int t=1;t<8;++t)buses.outputBuses.set(t,juce::AudioChannelSet::disabled());require(processor.setBusesLayout(buses),"disable optional buses");
+        for(int t=1;t<10;++t)buses.outputBuses.set(t,juce::AudioChannelSet::disabled());require(processor.setBusesLayout(buses),"disable optional buses");
         processor.releaseResources();processor.prepareToPlay(48000,128);processor.launchComposer(0,true);host.ppq=0;double fallback=0;for(int block=0;block<10;++block){processor.processBlock(audio,midi);for(int k=0;k<128;++k)fallback+=std::abs(audio.getSample(0,k));host.ppq+=128.0/24000;}require(fallback>.01,"unconnected stems fall back to MAIN");
         processor.launchComposer(0,true);
-        editor->setSize(1440,1280);tab("COMPOSER");snapshot("COMPOSER-final");
+        editor->setSize(1440,1280);tab("COMPOSER");snapshot("COMPOSER-final");tab("MIXER");snapshot("MIXER-final");for(int i=0;i<editor->getNumChildComponents();++i)if(auto* b=dynamic_cast<juce::TextButton*>(editor->getChildComponent(i)))if(b->getButtonText()=="MIXER")require(b->getRight()<=editor->getWidth(),"MIXER tab remains within editor bounds");tab("COMPOSER");
         processor.editComposer([](auto& d){d=jerzy::composer::factoryDocument();});
         const auto demo=juce::File::getCurrentWorkingDirectory();require(processor.exportComposer(demo.getChildFile("PRO-composer-song.mid"),true,0).wasOk(),"factory song export");require(processor.saveComposer(demo.getChildFile("Composer-Demo.jpro")).wasOk(),"factory Composer project");
         const auto factory=processor.composerDocument();const auto compiled=jerzy::composer::compile(factory);const auto pack=demo.getChildFile("MIDI-Pattern-Pack");require(pack.createDirectory().wasOk(),"pattern pack folder");
         for(size_t i=0;i<factory.scenes.size();++i)for(int t=0;t<7;++t)require(jerzy::composer::writeMidi(compiled.scenes[i],factory.tempo,pack.getChildFile(juce::String(int(i)+1)+"-"+juce::String(factory.scenes[i].name)+"-"+jerzy::composer::trackNames[t]+".mid"),t).wasOk(),"per-scene per-instrument MIDI export");
         processor.releaseResources();processor.setPlayHead(nullptr);
+        // Clock source selection must not silently use the other source.
+        processor.setPlayHead(&host);processor.prepareToPlay(48000,128);
+        processor.transport(false);set("composerEnabled",0);set("clockSource",1);host.bpm=97;host.playing=true;processor.processBlock(audio,midi);require(std::abs(processor.tempoDisplay.load()-97)<.01,"HOST tempo follows FL Studio");
+        set("clockSource",0);set("internalTempo",113);processor.processBlock(audio,midi);require(std::abs(processor.tempoDisplay.load()-113)<.01,"INTERNAL ignores host BPM");
+        set("clockSource",2);processor.processBlock(audio,midi);require(processor.clockStatus.load()==2,"MIDI clock waits for external input");
+        int64_t absolute=0;for(int block=0;block<250;++block){midi.clear();if(block==0)midi.addEvent(juce::MidiMessage::midiStart(),0);for(int i=0;i<128;++i)if((absolute+i)%1000==0)midi.addEvent(juce::MidiMessage::midiClock(),i);processor.processBlock(audio,midi);absolute+=128;}
+        require(processor.clockStatus.load()==1&&std::abs(processor.tempoDisplay.load()-120)<.1,"external MIDI clock locks to 120 BPM at audio timestamps");
+        midi.addEvent(juce::MidiMessage::midiStop(),0);processor.processBlock(audio,midi);require(!processor.readParameters().autoPlay,"MIDI stop stops generation");
+        for(int i=0;i<400;++i)processor.processBlock(audio,midi);require(processor.clockStatus.load()==3,"missing external MIDI clock reports LOST");
+        set("clockSource",0);set("mix2Gain",.73f);set("mix2Pan",-.4f);set("mix2Delay",.3f);set("mix1Solo",1);processor.getStateInformation(state);set("mix2Gain",1);set("mix1Solo",0);processor.setStateInformation(state.getData(),int(state.getSize()));require(std::abs(processor.readParameters().mix2Gain-.73)<.001&&processor.readParameters().mix1Solo,"mixer fader, pan, sends and solo state round trip");
+        processor.launchComposer(0,false);for(int i=0;i<40;++i)processor.processBlock(audio,midi);const double oldBeat=processor.composerBeatDisplay.load();
+        set("arpGate",.91f);juce::Thread::sleep(30);processor.processBlock(audio,midi);juce::Thread::sleep(20);processor.processBlock(audio,midi);
+        require(std::abs(processor.composerDocument().scenes[0].patch.arpGate-.91)<.001,"live module control updates Composer scene");require(processor.composerBeatDisplay.load()>=oldBeat,"patch recompile preserves arrangement position");
+        processor.transport(false);processor.releaseResources();processor.setPlayHead(nullptr);
         std::cout<<"PASS MIDI, three-rack routing state, legacy migration, GUI attachments, reorder PRO MIDI mappings, 64-step state, right-click and 24 page/rack snapshots\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<"\n";return 1; }

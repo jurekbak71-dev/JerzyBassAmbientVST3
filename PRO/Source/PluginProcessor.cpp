@@ -58,7 +58,7 @@ BassAmbientProcessor::BassAmbientProcessor()
       state(*this,nullptr,"JerzyBassAmbientPRO",layout()) {
     for(auto& mapping:ccMap)mapping.store(-1);
     const auto specs=parameterSpecs();
-    for(const auto& s:specs) {values.push_back(state.getRawParameterValue(s.id));hostParameters.push_back(state.getParameter(s.id));}
+    for(const auto& s:specs) {values.push_back(state.getRawParameterValue(s.id));hostParameters.push_back(state.getParameter(s.id));parameterGroups.push_back(s.group);}
     generateParameter=state.getParameter("autoPlay");
     const char* switches[]{"bass","pad","arp","drums","fxEnabled","autoPlay","composerEnabled","composerPlaying","composerSongMode","composerLoop","composerScene","composerIntensity","separateOutputs","midiPlayback"};
     for(int k=0;k<14;++k) for(size_t i=0;i<specs.size();++i) if(specs[i].id==switches[k])ccMap[size_t(20+k)].store(int(i));
@@ -102,12 +102,13 @@ void BassAmbientProcessor::prepareToPlay(double sampleRate,int) {
     delete activeComposer;activeComposer=nullptr;delete pendingComposer.exchange(nullptr);delete retiredComposer.exchange(nullptr);
     activeComposer=new jerzy::composer::Compiled(jerzy::composer::compile(composerDocument()));compiledRevision=composerRevision.load();
     playback=nullptr;wasComposerPlaying=false;previousComposerBeat=-1;lastComposerPPQ=-1;sectionIndex=-1;lastResourceSection=-2;tailUntil.fill(0);previousTracks.fill(false);
-    sr=sampleRate;instrument.prepare(sr);current=readParameters();localPPQ=0;resetRequested=false;
+    sr=sampleRate;midiClock.reset(sr);clockSamples=0;previousClock=-1;instrument.prepare(sr);current=readParameters();localPPQ=0;resetRequested=false;
     instrument.configureResources(current);instrument.serviceResources();instrument.configureResources(current);
+    lastControlSnapshot=readParameters();
     stopWorker=false;resourceWorker=std::thread([this] {while(!stopWorker.load()) {instrument.serviceResources();serviceComposer();std::this_thread::sleep_for(std::chrono::milliseconds(5));}instrument.serviceResources();});
 }
 bool BassAmbientProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
-    if(!buses.inputBuses.isEmpty()||buses.outputBuses.isEmpty()||buses.outputBuses.size()>8||buses.getMainOutputChannelSet()!=juce::AudioChannelSet::stereo())return false;
+    if(!buses.inputBuses.isEmpty()||buses.outputBuses.isEmpty()||buses.outputBuses.size()>10||buses.getMainOutputChannelSet()!=juce::AudioChannelSet::stereo())return false;
     for(const auto& layout:buses.outputBuses)if(!layout.isDisabled()&&layout!=juce::AudioChannelSet::stereo())return false;
     return true;
 }
@@ -118,8 +119,8 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
     adoptComposer();
     audio.clear();auto target=readParameters();auto controls=target;
     if(!controls.composerEnabled&&wasComposerPlaying){instrument.allOff();wasComposerPlaying=false;playback=nullptr;}
-    std::array<int,7> stemChannels{};stemChannels.fill(-1);unsigned splitMask=0;
-    for(int t=0;t<7;++t)if(auto* bus=getBus(false,t+1);bus&&bus->isEnabled()) {
+    std::array<int,9> stemChannels{};stemChannels.fill(-1);unsigned splitMask=0;
+    for(int t=0;t<9;++t)if(auto* bus=getBus(false,t+1);bus&&bus->isEnabled()) {
         const int offset=getChannelIndexInProcessBlockBuffer(false,t+1,0);
         if(offset>=0&&offset+1<audio.getNumChannels()){stemChannels[size_t(t)]=offset;if(controls.separateOutputs)splitMask|=1U<<t;}
     }
@@ -152,17 +153,21 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
         c.order=t.order;
     }
     current.masterFX=previous.masterFX;
-    double tempo=target.internalTempo,ppq=localPPQ;bool playing=false;int num=4,den=4;
-    if(auto* head=getPlayHead()) if(auto position=head->getPosition()) {
-        if(auto t=position->getBpm()) tempo=*t;
-        if(auto t=position->getPpqPosition()) ppq=*t;
-        if(auto t=position->getTimeSignature()) { num=t->numerator;den=t->denominator; }
+    double tempo=target.internalTempo,ppq=localPPQ;bool playing=false,hostAvailable=false;int num=4,den=4;
+    if(controls.clockSource!=previousClock){previousClock=controls.clockSource;instrument.allOff();wasComposerPlaying=false;localPPQ=ppq=0;}
+    if(controls.clockSource==1)if(auto* head=getPlayHead())if(auto position=head->getPosition()){
+        if(auto t=position->getBpm()){tempo=*t;hostAvailable=true;}
+        if(auto t=position->getPpqPosition())ppq=*t;
+        if(auto t=position->getTimeSignature()){num=t->numerator;den=t->denominator;}
         playing=position->getIsPlaying();
-        // While stopped, retain a local clock for live playing / preview.
-        if(!playing) ppq=localPPQ;
     }
-    tempo=juce::jlimit(20.0,400.0,tempo);instrument.beginBlock(ppq,tempo,playing);
-    const double increment=tempo/(60*sr),smoothing=1-std::exp(-1/(sr*.02));
+    if(controls.clockSource==2){tempo=midiClock.bpm;ppq=midiClock.beat;playing=midiClock.running&&midiClock.valid(clockSamples);}
+    const bool clockReady=controls.clockSource==0||(controls.clockSource==1&&hostAvailable&&playing)||(controls.clockSource==2&&playing);
+    clockStatus=controls.clockSource==0?0:clockReady?1:(controls.clockSource==2&&midiClock.locked?3:2);
+    tempo=juce::jlimit(20.0,400.0,tempo);tempoDisplay=tempo;clockBarBeats=double(num)*4/std::max(1,den);
+    instrument.beginBlock(ppq,tempo,playing);
+    double increment=tempo/(60*sr);const double smoothing=1-std::exp(-1/(sr*.02));
+    std::array<float,9> peaks{};std::array<bool,7> inputs{},active{};
     auto event=midi.cbegin();const auto end=midi.cend();float maximum=0;
     for(int sample=0;sample<audio.getNumSamples();++sample) {
 #define BOOL(f,l,g)
@@ -188,15 +193,25 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
 #undef CHOICE
         }
         current.masterFX+=(target.masterFX-current.masterFX)*smoothing;
-        const double position=ppq+sample*increment;
+        double position=controls.clockSource==2?midiClock.beat:ppq+sample*increment;
         while(event!=end&&(*event).samplePosition<=sample) {
             auto m=(*event).getMessage();int ch=m.getChannel();
-            if((controls.midiPlayback||controls.composerEnabled)&&!m.isController()&&!m.isPitchWheel()) {if(controls.midiPlayback)routePartMidi(m,current);}
+            if(m.isMidiClock()){midiClock.tick(clockSamples+sample);if(controls.clockSource==2){tempo=midiClock.bpm;increment=tempo/(60*sr);position=midiClock.beat;}}
+            else if(m.isMidiStart()||m.isMidiContinue()||m.isMidiStop()||m.isSongPositionPointer()){
+                if(m.isMidiStart())midiClock.start();else if(m.isMidiContinue())midiClock.resume();else if(m.isMidiStop())midiClock.stop();else midiClock.songPosition(m.getSongPositionPointerMidiBeat());
+                if(controls.clockSource==2&&!m.isSongPositionPointer()){
+                    const bool run=!m.isMidiStop();controls.composerPlaying=run;controls.autoPlay=run&&!controls.composerEnabled;target.autoPlay=current.autoPlay=controls.autoPlay;
+                    setParameterValue("composerPlaying",run?1:0);setParameterValue("autoPlay",controls.autoPlay?1:0);wasComposerPlaying=false;
+                }
+            }
+            else if((controls.midiPlayback||controls.composerEnabled)&&!m.isController()&&!m.isPitchWheel()) {if(controls.midiPlayback)routePartMidi(m,current);}
             else if(m.isNoteOn()) instrument.noteOn(m.getNoteNumber(),ch,m.getFloatVelocity(),current,position);
             else if(m.isNoteOff()) instrument.noteOff(m.getNoteNumber(),ch,current,position);
             else if(m.isPitchWheel()) instrument.pitchBend(ch,m.getPitchWheelValue());
             else if(m.isController()) {
                 const int cc=m.getControllerNumber(),value=m.getControllerValue();
+                const int mapped=ccMap[size_t(cc)].load();if(mapped>=0&&mapped<int(parameterGroups.size())){const int group=parameterGroups[size_t(mapped)];if(group<=1)inputs[0]=true;else if(group==2)inputs[1]=true;else if(group==6)inputs[2]=true;else if(group>=8&&group<=11)inputs[size_t(group-5)]=true;else if(group>=14&&group<=20)inputs[size_t(group-14)]=true;}
+
                 if(cc==120) {generateParameter->setValueNotifyingHost(0);target.autoPlay=current.autoPlay=controls.autoPlay=false;if(auto* parameter=state.getParameter("composerPlaying"))parameter->setValueNotifyingHost(0);controls.composerPlaying=false;instrument.reset();wasComposerPlaying=false;}
                 else if(cc==123)instrument.allOff();
                 else {handleMappedController(cc,value,controls);target=controls;instrument.controller(ch,cc,value,current,position);}
@@ -205,16 +220,32 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
                 current.fxEnabled=target.fxEnabled;current.autoPlay=target.autoPlay;
             }
             else if(m.isAllNotesOff()||m.isAllSoundOff()) instrument.allOff();
+            if(m.isNoteOn()){
+                if(controls.midiPlayback){const int track=ch==1?0:ch==2?1:ch==3?2:ch==10?(m.getNoteNumber()==36?3:m.getNoteNumber()==38||m.getNoteNumber()==40?4:m.getNoteNumber()==42||m.getNoteNumber()==44?5:6):-1;if(track>=0)inputs[size_t(track)]=true;}
+                else if(!controls.composerEnabled){inputs[0]|=controls.bass;inputs[1]|=controls.pad;inputs[2]|=controls.arp;if(ch==10)for(int t=3;t<7;++t)inputs[size_t(t)]=true;}
+            }
             ++event;
         }
-        if(controls.composerEnabled) {target=composerSample(controls,position,tempo,playing,num,den);current=target;if(sample==0)instrument.configureResources(target);}
+        auto playbackControls=controls;
+        const bool advancing=controls.clockSource==0||(controls.clockSource==1&&hostAvailable&&playing)||(controls.clockSource==2&&midiClock.running&&midiClock.valid(clockSamples+sample));
+        if(!advancing){playbackControls.composerPlaying=false;playbackControls.autoPlay=false;current.autoPlay=false;}
+        if(controls.composerEnabled) {target=composerSample(playbackControls,position,tempo,playing,num,den);current=target;if(sample==0)instrument.configureResources(target);}
         auto output=instrument.next(current,position,num,den,controls.composerEnabled||controls.midiPlayback,splitMask);
         const auto& stems=instrument.stemOutputs();
-        for(int t=0;t<7;++t)if(stemChannels[size_t(t)]>=0){audio.setSample(stemChannels[size_t(t)],sample,float(stems[size_t(t)].l));audio.setSample(stemChannels[size_t(t)]+1,sample,float(stems[size_t(t)].r));}
+        const auto& returns=instrument.returnOutputs();
+        const auto voices=instrument.activeTracks();
+        for(int t=0;t<9;++t){const auto value=t<7?stems[size_t(t)]:returns[size_t(t-7)];peaks[size_t(t)]=std::max(peaks[size_t(t)],float(std::max(std::abs(value.l),std::abs(value.r))));
+            if(t<7)active[size_t(t)]|=voices[size_t(t)];
+            if(stemChannels[size_t(t)]>=0){audio.setSample(stemChannels[size_t(t)],sample,float(value.l));audio.setSample(stemChannels[size_t(t)]+1,sample,float(value.r));}}
+        if(controls.clockSource==2&&midiClock.running&&midiClock.valid(clockSamples+sample))midiClock.beat+=increment;
         audio.setSample(0,sample,float(output.l));audio.setSample(1,sample,float(output.r));
         maximum=std::max(maximum,float(std::max(std::abs(output.l),std::abs(output.r))));
     }
-    localPPQ=ppq+audio.getNumSamples()*increment;midi.clear();
+    localPPQ=ppq+audio.getNumSamples()*increment;clockSamples+=audio.getNumSamples();midi.clear();
+    tempoDisplay=tempo;beatDisplay=controls.clockSource==2?midiClock.beat:localPPQ;
+    if(controls.clockSource==2)clockStatus=midiClock.valid(clockSamples)?1:midiClock.locked?3:2;
+    for(int t=0;t<9;++t)channelPeak[size_t(t)]=std::max(peaks[size_t(t)],channelPeak[size_t(t)].load()*float(std::exp(-audio.getNumSamples()/(sr*.15))));
+    for(int t=0;t<7;++t){if(inputs[size_t(t)])inputPulse[size_t(t)]=int(sr*.15);else inputPulse[size_t(t)]=std::max(0,inputPulse[size_t(t)].load()-audio.getNumSamples());activePulse[size_t(t)]=active[size_t(t)]?int(sr*.12):std::max(0,activePulse[size_t(t)].load()-audio.getNumSamples());}
     rootDisplay=instrument.currentRoot();peak=maximum;drumStep=instrument.drumPosition();arpNote=instrument.arpNoteDisplay();fxBytes=instrument.fxMemoryBytes();
 }
 
@@ -250,7 +281,7 @@ void BassAmbientProcessor::setStateInformation(const void* data,int size) {
             }
         }
         if(auto song=tree.getChildWithName("Composer");song.isValid()) {try{auto data=jerzy::composer::fromTree(song);editComposer([&](auto& d){d=std::move(data);});}catch(const std::exception& e){const juce::ScopedLock lock(composerLock);composerFailure=e.what();}}
-        state.replaceState(tree);resetRequested=true;
+        state.replaceState(tree);controlSnapshotReset=true;resetRequested=true;
     }
 }
 void BassAmbientProcessor::applyPreset(int preset) {
@@ -288,3 +319,10 @@ void BassAmbientProcessor::handleMappedController(int cc,int value,jerzy::Parame
 }
 juce::AudioProcessorEditor* BassAmbientProcessor::createEditor() { return new BassAmbientEditor(*this); }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new BassAmbientProcessor(); }
+
+void BassAmbientProcessor::transport(bool run){
+    setParameterValue("transportRun",run?1:0);
+    if(!run){setParameterValue("composerPlaying",0);setParameterValue("autoPlay",0);requestPanic();}
+    else if(readParameters().composerEnabled)launchComposer(readParameters().composerScene-1,readParameters().composerSongMode);
+    else setParameterValue("autoPlay",1);
+}

@@ -17,7 +17,7 @@ public:
         g.setColour(juce::Colour(0xff151a22));g.fillRoundedRectangle(r,4);
         g.setColour(on?accent:muted.withAlpha(.45f));g.drawRoundedRectangle(r,4,on?1.8f:1.0f);
         if(on){g.setColour(accent);g.fillEllipse(8,r.getCentreY()-3,6,6);}
-        auto label=b.getButtonText();label=label=="ON"?(on?"ON":"OFF"):label+(on?" ON":" OFF");
+        auto label=b.getButtonText();label=label.startsWith("MODE:")?label:label=="ON"?(on?"ON":"OFF"):label+(on?" ON":" OFF");
         g.setColour(b.findColour(juce::ToggleButton::textColourId).withMultipliedAlpha(on?1.0f:.65f));g.setFont(11);g.drawText(label,18,0,b.getWidth()-20,b.getHeight(),juce::Justification::centredLeft);
     }
     void drawButtonBackground(juce::Graphics& g,juce::Button& b,const juce::Colour& colour,bool over,bool down) override {
@@ -282,9 +282,9 @@ public:
 
 BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEditor(p),processor(p),theme(std::make_unique<Theme>()) {
     setLookAndFeel(theme.get());
-    const char* names[]{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER"};
-    for(int k=0;k<7;++k) {
-        ProVisual::tint(tabs[size_t(k)],ProVisual::pages[k]);tabs[size_t(k)].setButtonText(names[k]);tabs[size_t(k)].onClick=[this,k]{selectPage(k);};addAndMakeVisible(tabs[size_t(k)]);
+    const char* names[]{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER","MIXER"};
+    for(int k=0;k<8;++k) {
+        ProVisual::tint(tabs[size_t(k)],ProVisual::pages[size_t(std::min(k,6))]);tabs[size_t(k)].setButtonText(names[k]);tabs[size_t(k)].onClick=[this,k]{selectPage(k);};addAndMakeVisible(tabs[size_t(k)]);
     }
     for(int k=0;k<8;++k) {
         pages[size_t(k)]=std::make_unique<Page>(processor,k);
@@ -292,6 +292,9 @@ BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEdit
         pages[size_t(k)]->layoutChanged=[this]{resized();};
     }
     composerView=std::make_unique<ComposerView>(processor);
+    mixerView=std::make_unique<MixerView>(processor);transportView=std::make_unique<TransportView>(processor);addAndMakeVisible(*transportView);
+    for(int k=0;k<4;++k){moduleLeds[size_t(k)]=std::make_unique<SignalLeds>(processor,k,k==3?6:k);addAndMakeVisible(*moduleLeds[size_t(k)]);}
+
     rackSelector.addItemList({"BASS rack","AMBIENT rack","MASTER rack"},1);
     rackSelector.setComponentID("rackSelector");rackSelector.setSelectedId(1,juce::dontSendNotification);
     rackSelector.onChange=[this] { selectedRack=rackSelector.getSelectedId()-1;selectPage(4); };
@@ -310,9 +313,9 @@ BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEdit
     setSize(1200,820);selectPage(0);timerCallback();startTimerHz(20);
 }
 BassAmbientEditor::~BassAmbientEditor() { stopTimer();viewport.setViewedComponent(nullptr,false);setLookAndFeel(nullptr); }
-juce::Component& BassAmbientEditor::currentPage() { if(selected==6)return *composerView;return *pages[size_t(selected==4?2+selectedRack:selected==2?5:selected==3?6:selected==5?7:selected)]; }
+juce::Component& BassAmbientEditor::currentPage() { if(selected==7)return *mixerView;if(selected==6)return *composerView;return *pages[size_t(selected==4?2+selectedRack:selected==2?5:selected==3?6:selected==5?7:selected)]; }
 void BassAmbientEditor::selectPage(int index) {
-    selected=index;for(int k=0;k<7;++k) tabs[size_t(k)].setToggleState(k==index,juce::dontSendNotification);
+    selected=index;for(int k=0;k<8;++k) tabs[size_t(k)].setToggleState(k==index,juce::dontSendNotification);
     rackSelector.setVisible(index==4);
     viewport.setViewedComponent(&currentPage(),false);resized();viewport.setViewPosition(0,0);
 }
@@ -321,18 +324,21 @@ void BassAmbientEditor::paint(juce::Graphics& g) {
     g.setColour(text);g.setFont(juce::Font(juce::FontOptions(22).withStyle("Bold")));
     g.drawText("JERZY  /  BASS AMBIENT PRO",20,12,400,35,juce::Justification::centredLeft);
     g.setColour(muted);g.setFont(juce::Font(juce::FontOptions(12)));
-    g.drawText("0.4.0 DEVELOPMENT  |  MODULAR GENERATIVE GROOVEBOX",22,47,460,20,juce::Justification::centredLeft);
+    g.drawText("0.5.0 DEVELOPMENT  |  MODULAR GENERATIVE GROOVEBOX",22,47,460,20,juce::Justification::centredLeft);
 }
 void BassAmbientEditor::resized() {
     presets.setBounds(getWidth()-460,22,220,34);mutate.setBounds(getWidth()-228,22,100,34);panic.setBounds(getWidth()-116,22,96,34);
-    int tabWidth=(getWidth()-40)/7;for(int k=0;k<7;++k) tabs[size_t(k)].setBounds(20+k*tabWidth,80,tabWidth-6,38);
-    rackSelector.setBounds(getWidth()-232,124,212,32);
+    int tabWidth=(getWidth()-40)/8;for(int k=0;k<8;++k) tabs[size_t(k)].setBounds(20+k*tabWidth,80,tabWidth-6,38);
+    for(int k=0;k<4;++k)moduleLeds[size_t(k)]->setBounds(20+k*tabWidth,120,tabWidth-6,18);
+    transportView->setBounds(20,142,getWidth()-40,34);
+    rackSelector.setBounds(getWidth()-232,180,212,32);
     fxPower.setBounds(getWidth()-590,16,124,28);
-    viewport.setBounds(16,selected==4?164:130,getWidth()-32,getHeight()-(selected==4?208:174));
-    auto& page=currentPage();int w=viewport.getWidth()-18;page.setSize(w,selected==6?composerView->requiredHeight():static_cast<Page&>(page).requiredHeight(w));page.resized();
+    viewport.setBounds(16,selected==4?218:182,getWidth()-32,getHeight()-(selected==4?262:226));
+    auto& page=currentPage();int w=viewport.getWidth()-18;page.setSize(w,selected==7?mixerView->requiredHeight():selected==6?composerView->requiredHeight():static_cast<Page&>(page).requiredHeight(w));page.resized();
     status.setBounds(20,getHeight()-36,getWidth()-40,26);
 }
 void BassAmbientEditor::timerCallback() {
+    for(auto& led:moduleLeds)led->repaint();
     int root=processor.rootDisplay.load();float level=processor.peak.load();
     juce::String note=root<0?"--":juce::MidiMessage::getMidiNoteName(root,true,true,3);
     juce::String db=level<.00001f?"-inf":juce::String(juce::Decibels::gainToDecibels(level),1);
