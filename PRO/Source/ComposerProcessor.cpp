@@ -59,11 +59,13 @@ void BassAmbientProcessor::serviceComposer(){
     try {auto data=composerDocument();auto result=std::make_unique<Compiled>(compile(std::move(data)));pendingComposer.store(result.release(),std::memory_order_release);compiledRevision=revision;}
     catch(const std::exception& e){const juce::ScopedLock lock(composerLock);composerFailure=e.what();compiledRevision=revision;}
 }
-void BassAmbientProcessor::adoptComposer(){
+void BassAmbientProcessor::adoptComposer(bool resetVoices){
     if(retiredComposer.load(std::memory_order_acquire))return;
     if(auto* ready=pendingComposer.exchange(nullptr,std::memory_order_acquire)){
         if(activeComposer)retiredComposer.store(activeComposer,std::memory_order_release);
-        activeComposer=ready;playback=wasSongMode?&ready->song:&ready->scenes[size_t(juce::jlimit(0,int(ready->scenes.size())-1,playingScene))];sectionIndex=-1;previousComposerBeat=-1;eventCursor=0;instrument.allOff();
+        activeComposer=ready;playback=wasSongMode?&ready->song:&ready->scenes[size_t(juce::jlimit(0,int(ready->scenes.size())-1,playingScene))];sectionIndex=-1;previousComposerBeat=-1;eventCursor=0;
+        // A background harmony/scene edit must not release roots held by live MIDI.
+        if(resetVoices)instrument.allOff();
     }
 }
 void BassAmbientProcessor::launchComposer(int scene,bool song){

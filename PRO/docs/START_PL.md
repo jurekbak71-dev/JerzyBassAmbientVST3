@@ -74,3 +74,7 @@ Rendering używa kopii bieżących ustawień i aranżacji. Tempo pochodzi z INTE
 Postęp widać w osobnym oknie; **Cancel** anuluje operację. Dotychczasowy plik jest zastępowany dopiero po ukończeniu nowego WAV. Stems trafiają do nowego folderu. Przy 24-bit PCM zbyt głośny sygnał może zostać obcięty — do dalszego miksowania wybierz 32-bit float. Maksymalny rozmiar pojedynczego WAV to 4 GB; dłuższe aranżacje eksportuj częściami.
 
 Po ukończeniu stereo WAV aktywuje się **DRAG WAV TO FL**. Przeciągnij ten przycisk na **Playlistę** FL Studio: FL utworzy Audio Clip. Plik pozostaje w wybranej lokalizacji — nie przenoś go ani nie usuwaj, bo projekt FL odwołuje się do niego. Przycisk używa ostatniego udanego renderu stereo w tym oknie; po eksporcie stems przeciągaj numerowane pliki WAV z folderu. Automatyczne wstawianie Audio Clip bez przeciągnięcia nie jest dostępne przez standardowe API VST3.
+
+### LINK ROOT + SCALE i nuty z Piano Roll
+
+Przy COMPOSER OFF zmiana root z MIDI aktualizuje wspólną harmonię, zachowując trzymane nuty. Przebudowa danych Composera w tle nie może ucinać generatorów. Długa nuta root steruje kolejnymi powtórzeniami frazy Rock / Metal / Punk / Blues aż do Note Off (przy MIDI PARTS OFF i DIRECT MIDI OFF).

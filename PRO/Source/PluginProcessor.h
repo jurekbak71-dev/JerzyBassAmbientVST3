@@ -84,7 +84,7 @@ private:
     std::array<double,8> tailUntil{};
     std::array<bool,8> previousTracks{};
     void serviceComposer();
-    void adoptComposer();
+    void adoptComposer(bool resetVoices);
     jerzy::Parameters composerSample(const jerzy::Parameters&,double,double,bool,int,int);
     void routePartMidi(const juce::MidiMessage&,const jerzy::Parameters&);
     static BusesProperties buses();

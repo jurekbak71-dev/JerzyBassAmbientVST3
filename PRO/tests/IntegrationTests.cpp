@@ -198,6 +198,20 @@ int main() {
         set("model",3);tab("BASS");editor->resized();snapshot("BASS-GUITAR");tab("KRELL");snapshot("KRELL-final");require(processor.readParameters().model==3,"Bass Guitar model selected");
         processor.applyPreset(9);require(processor.readParameters().model==3,"Bass Guitar factory preset");for(int kind=10;kind<=13;++kind){processor.applyPreset(kind);require(processor.readParameters().model==3&&processor.readParameters().style==kind,"Rock Metal Punk Blues presets select guitar and style");}processor.applyPreset(14);require(processor.readParameters().krell&&!processor.readParameters().bass&&!processor.readParameters().pad,"independent Krell audition preset");
         tab("COMPOSER");viewport->setViewPosition(0,1200);snapshot("AUDIO-EXPORT");
+        // One held root must drive repeated bass phrases, with shared harmony enabled.
+        {BassAmbientProcessor rootProcessor;Host rootHost;rootHost.bpm=240;rootProcessor.setPlayHead(&rootHost);
+            for(int style=10;style<=13;++style){
+                for(const auto& item:std::initializer_list<std::pair<const char*,float>>{{"composerEnabled",0},{"midiPlayback",0},{"direct",0},{"autoPlay",0},{"harmonyLink",1},{"harmonyRoot",36},{"clockSource",1},{"bass",1},{"pad",0},{"arp",0},{"drums",0},{"krell",0},{"fxEnabled",0},{"model",3},{"style",float(style)},{"density",1},{"division",2},{"bars",1},{"meter",1},{"numerator",4},{"denominator",4}})rootProcessor.setParameterValue(item.first,item.second);
+                rootProcessor.prepareToPlay(48000,128);rootHost.ppq=0;rootHost.playing=true;juce::AudioBuffer<float> rootAudio(2,128);juce::MidiBuffer rootMidi;
+                rootMidi.addEvent(juce::MidiMessage::noteOn(1,48,1.0f),0);std::array<double,3> barEnergy{};
+                for(int block=0;block<1125;++block){rootProcessor.processBlock(rootAudio,rootMidi);const int barIndex=std::min(2,int(rootHost.ppq/4));for(int n=0;n<128;++n)barEnergy[size_t(barIndex)]+=std::abs(rootAudio.getSample(0,n));rootHost.ppq+=128.0/12000;if(block%16==0)juce::Thread::sleep(1);}
+                for(auto value:barEnergy)require(value>.01,"LINK ROOT held MIDI note repeats Rock/Metal/Punk/Blues beyond 16 steps");
+                require(rootProcessor.rootDisplay.load()==48,"linked root stays held through background Composer rebuilds");
+                rootMidi.addEvent(juce::MidiMessage::noteOff(1,48),0);rootProcessor.processBlock(rootAudio,rootMidi);
+                require(rootProcessor.rootDisplay.load()==-1,"linked MIDI root releases on real note-off");
+                rootProcessor.releaseResources();
+            }
+        }
         checkAudioRendering();
         std::cout<<"PASS MIDI, three-rack routing state, legacy migration, GUI attachments, reorder PRO MIDI mappings, 64-step state, right-click and 24 page/rack snapshots\n";
         return 0;

@@ -129,8 +129,8 @@ bool BassAmbientProcessor::isBusesLayoutSupported(const BusesLayout& buses) cons
 void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::MidiBuffer& midi) {
     juce::ScopedNoDenormals noDenormals;
     if(resetRequested.exchange(false)||panicRequested.exchange(false)) {instrument.reset();wasComposerPlaying=false;playback=nullptr;previousComposerBeat=-1;tailUntil.fill(0);previousTracks.fill(false);}
-    adoptComposer();
     audio.clear();auto target=readParameters();auto controls=target;
+    adoptComposer(controls.composerEnabled);
     if(!controls.composerEnabled&&wasComposerPlaying){instrument.allOff();wasComposerPlaying=false;playback=nullptr;}
     std::array<int,10> stemChannels{};stemChannels.fill(-1);unsigned splitMask=0;
     for(int t=0;t<10;++t)if(auto* bus=getBus(false,t==7?10:t>=8?t:t+1);bus&&bus->isEnabled()) {
