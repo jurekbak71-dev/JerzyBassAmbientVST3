@@ -1,2 +1,2 @@
-10c4cd186781dc183896d48fc4604ed25465a691b55899d0f730a0323bf3fbca  Jerzy Bass Ambient PRO.exe
-930c67255876492fff9fbbc29ea6bd1ef08fdaca82761fcd5b6e96ed2b0f9533  Jerzy-Bass-Ambient-PRO-VST3-Windows.zip
+e013aac2423ab114ff82f7a22747c2520685aa45b95a30da2ec78cbc74be5cdb  Jerzy Bass Ambient PRO.exe
+787cfd0b598eb33ec5cd5094b3146cde020f7bebfc6faf582a30ba6839f16bd7  Jerzy-Bass-Ambient-PRO-VST3-Windows.zip
