@@ -1,8 +1,9 @@
+#include "VisualPalette.h"
 #include "ComposerView.h"
 using namespace jerzy::composer;
 namespace {
 const juce::Colour ink(0xffedf1f7),dim(0xff9eafc2),mint(0xff61e0c1),dark(0xff181e27);
-const juce::Colour colours[]{juce::Colour(0xffffad70),juce::Colour(0xffb4a1ff),juce::Colour(0xff63dbd0),juce::Colour(0xffff926b),juce::Colour(0xffff709b),juce::Colour(0xff72cfff),juce::Colour(0xffdab26c)};
+const auto& colours=ProVisual::tracks;
 void slider(juce::Slider& s,double lo,double hi,double step,const juce::String& label){s.setRange(lo,hi,step);s.setSliderStyle(juce::Slider::LinearHorizontal);s.setTextBoxStyle(juce::Slider::TextBoxRight,false,55,24);s.setName(label);s.setTooltip(label);}
 }
 class ComposerView::SceneModel final : public juce::ListBoxModel {
@@ -13,7 +14,7 @@ public:
     void paintListBoxItem(int row,juce::Graphics& g,int w,int h,bool selected) override {
         if(row>=getNumRows())return;const auto& s=view.document.scenes[size_t(row)];
         g.fillAll(selected?juce::Colour(0xff324252):dark);g.setColour(ink);g.setFont(12);g.drawText(juce::String(s.name)+"  "+juce::String(s.bars)+"b",6,0,140,h,juce::Justification::centredLeft);
-        const int cell=std::max(1,(w-152)/7);for(int t=0;t<7;++t){g.setColour(s.clips[size_t(t)].enabled?colours[t].withAlpha(.8f):juce::Colour(0xff303743));g.fillRoundedRectangle(float(150+t*cell),5,float(cell-4),float(h-10),3);}
+        const int cell=std::max(1,(w-152)/7);for(int t=0;t<7;++t){g.setColour(s.clips[size_t(t)].enabled?colours[t].withAlpha(.8f):juce::Colour(0xff303743));g.fillRoundedRectangle(float(150+t*cell),5,float(cell-4),float(h-10),3);g.setColour(s.clips[size_t(t)].enabled?dark:colours[t]);g.setFont(9);g.drawText(trackNames[t],150+t*cell,5,cell-4,h-10,juce::Justification::centred);}
     }
     void listBoxItemClicked(int row,const juce::MouseEvent& e) override {view.selectScene(row);if(e.x>=150){const int t=juce::jlimit(0,6,(e.x-150)/std::max(1,(view.scenes.getWidth()-152)/7));view.selectTrack(t);if(e.mods.isRightButtonDown())view.edit([&](auto& d){auto& c=d.scenes[size_t(row)].clips[size_t(t)];c.enabled=!c.enabled;});}}
     void listBoxItemDoubleClicked(int row,const juce::MouseEvent&) override {view.processor.launchComposer(row,false);}
@@ -144,7 +145,8 @@ void ComposerView::refresh(bool force){const auto next=processor.composerRevisio
     bar.setRange(1,s.bars,1);if(bar.getValue()<1)bar.setValue(1,juce::dontSendNotification);gain.setValue(c.gain,juce::dontSendNotification);enter.setValue(c.enterBar+1,juce::dontSendNotification);leave.setValue(c.leaveBar,juce::dontSendNotification);threshold.setValue(c.threshold,juce::dontSendNotification);generated.setToggleState(c.generated,juce::dontSendNotification);
     if(selectedSlot>=0){repeat.setValue(document.song[size_t(selectedSlot)].repeats,juce::dontSendNotification);evolve.setToggleState(document.song[size_t(selectedSlot)].evolve,juce::dontSendNotification);}
     if(selectedNote>=0&&selectedNote<int(c.notes.size())){velocity.setValue(c.notes[size_t(selectedNote)].velocity,juce::dontSendNotification);notePan.setValue(c.notes[size_t(selectedNote)].pan,juce::dontSendNotification);}
-    for(int t=0;t<7;++t){tracks[size_t(t)].setToggleState(t==selectedTrack,juce::dontSendNotification);tracks[size_t(t)].setButtonText(juce::String(trackNames[t])+(s.clips[size_t(t)].enabled?" ON":" OFF"));}
+    for(int t=0;t<7;++t){ProVisual::tint(tracks[size_t(t)],colours[t]);tracks[size_t(t)].setToggleState(t==selectedTrack,juce::dontSendNotification);tracks[size_t(t)].setButtonText(juce::String(trackNames[t])+(s.clips[size_t(t)].enabled?" ON":" OFF"));}
+    clipTitle.setColour(juce::Label::textColourId,colours[selectedTrack]);
     clipTitle.setText("CLIP: "+juce::String(s.name)+" / "+trackNames[selectedTrack]+"   |   Shift-click track: mute   |   Bar / octave / velocity / pan",juce::dontSendNotification);
     scenes.updateContent();song->updateContent();scenes.selectRow(selectedScene, true, false);if(selectedSlot>=0)song->selectRow(selectedSlot,true,false);grid->repaint();updating=false;
 }

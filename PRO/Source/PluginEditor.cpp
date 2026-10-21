@@ -1,3 +1,4 @@
+#include "VisualPalette.h"
 #include "PluginEditor.h"
 
 namespace {
@@ -12,11 +13,12 @@ public:
     }
     void drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,bool,bool) override {
         auto r=b.getLocalBounds().toFloat().reduced(1);const bool on=b.getToggleState();
+        const auto accent=b.findColour(juce::ToggleButton::tickColourId);
         g.setColour(juce::Colour(0xff151a22));g.fillRoundedRectangle(r,4);
         g.setColour(on?accent:muted.withAlpha(.45f));g.drawRoundedRectangle(r,4,on?1.8f:1.0f);
         if(on){g.setColour(accent);g.fillEllipse(8,r.getCentreY()-3,6,6);}
         auto label=b.getButtonText();label=label=="ON"?(on?"ON":"OFF"):label+(on?" ON":" OFF");
-        g.setColour(on?text:muted);g.setFont(11);g.drawText(label,18,0,b.getWidth()-20,b.getHeight(),juce::Justification::centredLeft);
+        g.setColour(b.findColour(juce::ToggleButton::textColourId).withMultipliedAlpha(on?1.0f:.65f));g.setFont(11);g.drawText(label,18,0,b.getWidth()-20,b.getHeight(),juce::Justification::centredLeft);
     }
     void drawButtonBackground(juce::Graphics& g,juce::Button& b,const juce::Colour& colour,bool over,bool down) override {
         if(b.getComponentID().startsWith("grid-")) {
@@ -193,7 +195,7 @@ public:
         if(index==6) {
             const char* names[]{"KICK","SNARE","HI-HAT","AUX"};
             for(int lane=0;lane<4;++lane) {
-                auto& label=laneLabels[size_t(lane)];label.setButtonText(names[lane]);label.onClick=[this,lane]{selectedDrum=lane;for(int i=0;i<4;++i)laneLabels[size_t(i)].setToggleState(i==lane,juce::dontSendNotification);if(layoutChanged)layoutChanged();};addAndMakeVisible(label);
+                auto& label=laneLabels[size_t(lane)];ProVisual::tint(label,ProVisual::tracks[size_t(lane+3)]);label.setButtonText(names[lane]);label.onClick=[this,lane]{selectedDrum=lane;for(int i=0;i<4;++i)laneLabels[size_t(i)].setToggleState(i==lane,juce::dontSendNotification);if(layoutChanged)layoutChanged();};addAndMakeVisible(label);
                 for(int step=0;step<16;++step) {auto& button=steps[size_t(lane*16+step)];
                     button.setComponentID("grid-"+juce::String(lane)+"-"+juce::String(step));
                     button.setTooltip("Left: toggle note | Right: velocity / MIDI Learn");
@@ -217,7 +219,8 @@ public:
         if(index!=6)return;
         const int length=int(processor.state.getRawParameterValue("drumLength")->load());
         const int playhead=processor.drumStep.load();
-        const juce::Colour colours[]{juce::Colour(0xffff9b65),juce::Colour(0xffff6b93),juce::Colour(0xff6edcf5),juce::Colour(0xffb6a0ff)};
+        const auto* colours=ProVisual::tracks.data()+3;
+        for(int lane=0;lane<4;++lane)ProVisual::tint(laneLabels[size_t(lane)],colours[lane]);
         for(int k=0;k<4;++k)banks[size_t(k)].setToggleState(k==bank,juce::dontSendNotification);
         for(int lane=0;lane<4;++lane)for(int k=0;k<16;++k){auto& button=steps[size_t(lane*16+k)];const int step=bank*16+k;
             const float velocity=processor.state.getRawParameterValue("drum"+juce::String(lane)+"_step"+juce::String(step))->load();
@@ -281,10 +284,11 @@ BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEdit
     setLookAndFeel(theme.get());
     const char* names[]{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER"};
     for(int k=0;k<7;++k) {
-        tabs[size_t(k)].setButtonText(names[k]);tabs[size_t(k)].onClick=[this,k]{selectPage(k);};addAndMakeVisible(tabs[size_t(k)]);
+        ProVisual::tint(tabs[size_t(k)],ProVisual::pages[k]);tabs[size_t(k)].setButtonText(names[k]);tabs[size_t(k)].onClick=[this,k]{selectPage(k);};addAndMakeVisible(tabs[size_t(k)]);
     }
     for(int k=0;k<8;++k) {
         pages[size_t(k)]=std::make_unique<Page>(processor,k);
+        const int identity[]{0,1,0,1,4,2,3,5};ProVisual::tint(*pages[size_t(k)],ProVisual::pages[size_t(identity[k])]);
         pages[size_t(k)]->layoutChanged=[this]{resized();};
     }
     composerView=std::make_unique<ComposerView>(processor);

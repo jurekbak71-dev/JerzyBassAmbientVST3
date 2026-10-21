@@ -82,7 +82,7 @@ public:
         if(down){top=top.darker(.15f);bottom=bottom.darker(.12f);}
         g.setGradientFill(juce::ColourGradient(top,r.getTopLeft(),bottom,r.getBottomLeft(),false));
         g.fillRoundedRectangle(r,5);
-        g.setColour(b.getToggleState()?theme.accent:theme.edge);g.drawRoundedRectangle(r,5,b.getToggleState()?1.8f:1.0f);
+        g.setColour(b.getToggleState()?b.findColour(juce::TextButton::textColourOnId):b.findColour(juce::TextButton::textColourOffId).withAlpha(.45f));g.drawRoundedRectangle(r,5,b.getToggleState()?1.8f:1.0f);
     }
 
     void drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,bool,bool) override {
@@ -97,8 +97,37 @@ public:
         auto r=juce::Rectangle<float>(0,0,(float)w,(float)h).reduced(1);
         g.setGradientFill(juce::ColourGradient(theme.panelTop,r.getTopLeft(),theme.panelBottom,r.getBottomLeft(),false));g.fillRoundedRectangle(r,4);
         g.setColour(theme.edge);g.drawRoundedRectangle(r,4,1);
-        juce::Path a;a.startNewSubPath((float)bx+3,(float)by+6);a.lineTo((float)bx+bw*.5f,(float)by+bh-4);a.lineTo((float)bx+bw-3,(float)by+6);
-        g.setColour(down?theme.accent.brighter(.2f):theme.accent);g.strokePath(a,juce::PathStrokeType(1.5f));
+        const float size=juce::jmin(20.0f,float(bw)-4,float(bh)-6);
+        auto button=juce::Rectangle<float>(size,size).withCentre({float(bx)+bw*.5f,float(by)+bh*.5f});
+        g.setColour(juce::Colours::black.withAlpha(.45f));g.fillRoundedRectangle(button.translated(0,1),4);
+        g.setGradientFill(juce::ColourGradient(theme.panelTop.brighter(down?.05f:.4f),button.getTopLeft(),theme.panelBottom,button.getBottomLeft(),false));
+        g.fillRoundedRectangle(button,4);g.setColour(theme.accent.withAlpha(down?1.0f:.65f));g.drawRoundedRectangle(button,4,1);
+        auto led=button.reduced(size*.32f);
+        g.setColour(theme.accent.withAlpha(.16f));g.fillEllipse(led.expanded(2));
+        g.setColour(down?theme.accent.brighter(.3f):theme.accent);g.fillEllipse(led);
+
+    }
+
+    int getSliderThumbRadius(juce::Slider&) override { return 12; }
+
+    void drawLinearSlider(juce::Graphics& g,int x,int y,int w,int h,float position,
+                          float,float,juce::Slider::SliderStyle style,juce::Slider& slider) override {
+        const bool vertical=style==juce::Slider::LinearVertical;
+        const float cx=vertical?x+w*.5f:position,cy=vertical?position:y+h*.5f;
+        auto track=vertical?juce::Rectangle<float>(cx-3,float(y),6,float(h))
+                           :juce::Rectangle<float>(float(x),cy-3,float(w),6);
+        g.setColour(juce::Colours::black.withAlpha(.65f));g.fillRoundedRectangle(track.expanded(1),4);
+        g.setColour(theme.edge);g.fillRoundedRectangle(track,3);
+        auto filled=track;
+        if(vertical)filled.setTop(position);else filled.setRight(position);
+        g.setColour(theme.accent.withAlpha(slider.isEnabled()?.7f:.2f));g.fillRoundedRectangle(filled,3);
+        auto cap=juce::Rectangle<float>(vertical?26.0f:18.0f,vertical?18.0f:24.0f).withCentre({cx,cy});
+        g.setColour(juce::Colours::black.withAlpha(.5f));g.fillRoundedRectangle(cap.translated(1,2),4);
+        g.setGradientFill(juce::ColourGradient(juce::Colour(0xff8695a8),cap.getTopLeft(),juce::Colour(0xff293442),cap.getBottomLeft(),false));
+        g.fillRoundedRectangle(cap,4);g.setColour(theme.muted);g.drawRoundedRectangle(cap,4,1);
+        g.setColour(theme.accent.withAlpha(slider.isEnabled()?1.0f:.3f));
+        if(vertical)g.fillRoundedRectangle(cx-8,cy-1,16,2,1);
+        else g.fillRoundedRectangle(cx-1,cy-8,2,16,1);
     }
 
 private:
