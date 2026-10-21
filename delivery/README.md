@@ -66,3 +66,7 @@ Pełny Linux: kompilator C/C++, CMake, Ninja, pkg-config, biblioteki dewelopersk
 W przygotowanej chmurze: `source /workspace/cloud-setup/activate.sh`; build `/workspace/cloud-setup/pro`, testy GUI pod Xvfb. Artefakty w `JerzyBassAmbientPRO_artefacts/Release`. Linuksowy `.vst3` nie działa w Windows. Instalacja Windows wymaga zbudowania wersji Windows i skopiowania całego bundle do `C:\Program Files\Common Files\VST3`.
 
 To wersja do testów rozwojowych. Przed dystrybucją: licencja JUCE, odsłuch, automatyka i zapis sesji w FL Studio, DPI/skalowanie, przełączanie modułów, testy sterowników audio i pomiary CPU.
+
+### Offline WAV rendering
+
+Composer can render a scene, its selected instrument, the complete arranged song, or aligned instrument stems with separate delay/reverb returns. Supports 24-bit PCM / 32-bit float at 44.1, 48 or 96 kHz, optional FX and fixed release-tail duration. Rendering uses an independent snapshot and cancellable background worker in both Standalone and VST3. See `docs/START_PL.md` for routing and stem/master-FX details.
