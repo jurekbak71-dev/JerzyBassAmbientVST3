@@ -80,7 +80,7 @@ public:
         g.setColour(juce::Colour(0xff313947));g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(3),8,1);
     }
     void resized() override {
-        auto bounds=getLocalBounds().reduced(10);label.setBounds(bounds.removeFromTop(30));
+        auto bounds=getLocalBounds().reduced(getHeight()<120?6:10);label.setBounds(bounds.removeFromTop(getHeight()<120?24:30));
         if(spec.kind==1) toggle.setBounds(bounds.withSizeKeepingCentre(80,32));
         else if(spec.kind==3) choice.setBounds(bounds.withSizeKeepingCentre(bounds.getWidth(),32));
         else slider.setBounds(bounds);
@@ -245,11 +245,31 @@ public:
         }
     }
     int arrange(int width,bool apply) {
+        // Drums: keep the selected voice beside the sequencer, not below it.
+        if(index==6) {
+            const int side=std::min(360,width/3), leftWidth=width-side-12;
+            const int globalColumns=std::max(3,leftWidth/145), globalCell=leftWidth/globalColumns;
+            int globalCount=0,voiceCount=0;
+            for(auto& item:controls) {
+                const bool visible=item.module<0||item.module==selectedDrum;
+                if(apply)item.control->setVisible(visible);
+                if(!visible)continue;
+                if(item.module<0) {
+                    if(apply)item.control->setBounds((globalCount%globalColumns)*globalCell,252+(globalCount/globalColumns)*108,globalCell,104);
+                    ++globalCount;
+                } else {
+                    if(apply)item.control->setBounds(leftWidth+12+(voiceCount%2)*(side/2),48+(voiceCount/2)*108,side/2,104);
+                    ++voiceCount;
+                }
+            }
+            return std::max(252+((globalCount+globalColumns-1)/globalColumns)*108,48+((voiceCount+1)/2)*108);
+        }
         const int columns=std::max(3,width/155),cell=width/columns;
-        int top=isFX()?130:index==6?332:50,count=0;
+        const int rowHeight=116;
+        int top=isFX()?130:50,count=0;
         for(size_t k=0;k<controls.size();++k) {
             if(int(k)==generatorStart) {
-                top+=((count+columns-1)/columns)*148;
+                top+=((count+columns-1)/columns)*rowHeight;
                 if(apply) generatorHeading.setBounds(12,top,width-24,36);
                 top+=40;count=0;
             }
@@ -257,10 +277,10 @@ public:
             if(item.control->getComponentID().startsWith("guitar"))visible&=int(processor.state.getRawParameterValue("model")->load())==3;
             if(apply) item.control->setVisible(visible);
             if(!visible) continue;
-            if(apply) item.control->setBounds((count%columns)*cell,top+(count/columns)*148,cell,142);
+            if(apply) item.control->setBounds((count%columns)*cell,top+(count/columns)*rowHeight,cell,rowHeight-4);
             ++count;
         }
-        return top+((count+columns-1)/columns)*148;
+        return top+((count+columns-1)/columns)*rowHeight;
     }
     int requiredHeight(int width) { return arrange(width,false); }
     void resized() override {
@@ -275,12 +295,16 @@ public:
             }
         }
         if(index==6) {
-            gridHelp.setBounds(12,48,getWidth()-24,28);
-            for(int k=0;k<4;++k)banks[size_t(k)].setBounds(92+k*92,82,86,28);
-            clearGrid.setBounds(getWidth()-310,82,78,28);fourFloor.setBounds(getWidth()-226,82,108,28);breakbeat.setBounds(getWidth()-112,82,104,28);
-            const int cell=(getWidth()-100)/16;
-            for(int lane=0;lane<4;++lane){laneLabels[size_t(lane)].setBounds(4,122+lane*48,88,42);
-                for(int k=0;k<16;++k)steps[size_t(lane*16+k)].setBounds(94+k*cell,122+lane*48,cell-4,40);}
+            const int gridWidth=getWidth()-std::min(360,getWidth()/3)-12;
+            gridHelp.setText("PATTERN 64 STEPS | Click instrument to edit at right",juce::dontSendNotification);
+            gridHelp.setBounds(8,44,gridWidth-16,24);
+            const int bankWidth=(gridWidth-90)/4;
+            for(int k=0;k<4;++k)banks[size_t(k)].setBounds(86+k*bankWidth,72,bankWidth-4,26);
+            clearGrid.setBounds(8,218,78,28);fourFloor.setBounds(92,218,108,28);breakbeat.setBounds(206,218,104,28);
+            const int cell=(gridWidth-88)/16;
+            for(int lane=0;lane<4;++lane){laneLabels[size_t(lane)].setBounds(4,104+lane*28,78,26);
+                for(int k=0;k<16;++k)steps[size_t(lane*16+k)].setBounds(86+k*cell,104+lane*28,cell-2,26);}
+
         }
         arrange(getWidth(),true);
     }
@@ -316,7 +340,10 @@ BassAmbientEditor::BassAmbientEditor(BassAmbientProcessor& p):AudioProcessorEdit
     status.setColour(juce::Label::textColourId,muted);
     // setResizeLimits may invoke resized(): pages must exist before applying it.
     setResizable(true,true);setResizeLimits(1000,680,1920,1400);
-    setSize(1200,820);selectPage(0);timerCallback();startTimerHz(20);
+    auto available=juce::Rectangle<int>(0,0,1280,800);
+    if(auto* display=juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())available=display->userArea;
+    // Leave space for the FL Studio wrapper and the system taskbar (logical pixels).
+    setSize(std::clamp(available.getWidth()-100,1000,1200),std::clamp(available.getHeight()-160,680,760));selectPage(0);timerCallback();startTimerHz(20);
 }
 BassAmbientEditor::~BassAmbientEditor() { stopTimer();viewport.setViewedComponent(nullptr,false);setLookAndFeel(nullptr); }
 juce::Component& BassAmbientEditor::currentPage() { if(selected==8)return *pages[10];if(selected==7)return *mixerView;if(selected==6)return *composerView;return *pages[size_t(selected==4?(selectedRack<3?2+selectedRack:selectedRack==5?11:5+selectedRack):selected==2?5:selected==3?6:selected==5?7:selected)]; }
