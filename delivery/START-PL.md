@@ -51,3 +51,7 @@ Diody IN, ACT, OUT i CLP oznaczają odpowiednio sterowanie wejściowe, aktywne g
 ### Przeciąganie MIDI do FL Studio
 
 Na dole Composera wybierz **SCENE** (wybrana scena) lub **WHOLE SONG** (cały song z powtórzeniami). Drugi wybór: **SELECTED TRACK** eksportuje zaznaczony instrument do jednego Piano Roll; **ALL TRACKS** tworzy wielościeżkowy plik MIDI do importu w FL Studio. Następnie przeciągnij **DRAG MIDI TO FL**. Eksport songu korzysta z listy SONG, więc najpierw dodaj do niej sceny. Osobne przyciski EXPORT SCENE / EXPORT SONG zapisują wszystkie ścieżki do pliku MIDI.
+
+### Układ na mniejszym ekranie
+
+Okno startuje w rozmiarze dopasowanym do obszaru roboczego ekranu, z rezerwą na ramkę FL Studio. W DRUMS kliknij KICK / SNARE / HI-HAT / AUX po lewej stronie siatki: parametry wybranego instrumentu są po prawej. Ustawienia wspólne są pod siatką. Panele regulatorów mają mniejszą wysokość; dłuższe strony nadal można przewijać.
