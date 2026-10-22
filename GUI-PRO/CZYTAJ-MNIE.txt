@@ -1,0 +1,34 @@
+PROPOZYCJA GUI — DO AKCEPTACJI
+
+Nie są to zrzuty wdrożonej wtyczki. To rzeczywiste zrzuty osobnego prototypu HTML/CSS, wykonane w Chromium. Kod projektu VST3/EXE nie został zmieniony.
+
+1. Otwórz 00-wszystkie-ekrany.png, aby zobaczyć całość.
+2. Otwórz galeria.html w przeglądarce, aby przeglądać i powiększać ekrany.
+3. Otwórz index.html, aby przejść po prototypie. Podstawowa nawigacja, wybory i klikanie kroków działają demonstracyjnie; audio, MIDI, zapis i rendering nie działają. Część przycisków prezentuje jedynie planowaną funkcję. Wskazania meterów i komunikaty są przykładowe.
+
+Układ projektowany na 1200 × 720 pikseli logicznych. Zrzuty zapisane przy skali 2×: 2400 × 1440 PNG. Wysoka rozdzielczość PNG służy powiększaniu — nie oznacza wymagania tak dużego ekranu.
+
+Do zgłaszania uwag używaj numerów ekranów, np. „02 — generator basu: większy wybór stylu”.
+
+EKRANY:
+01. Bass — brzmienie — previews/01-bass-brzmienie.png
+02. Bass — styl i generator — previews/02-bass-generator.png
+03. Ambient — synteza — previews/03-ambient.png
+04. ARP — rytm i losowość — previews/04-arp-generator.png
+05. ARP — synteza i stereo — previews/05-arp-brzmienie.png
+06. Drums — grid i edycja głosu — previews/06-drums.png
+07. Krell — własna synteza — previews/07-krell.png
+08. Aranżer — sceny i song — previews/08-aranzer-song.png
+09. Klip — nuty root / generator — previews/09-klip-generator.png
+10. Klip — nuty manualne — previews/10-klip-nuty.png
+11. Mikser — poziomy i sendy — previews/11-mikser.png
+12. FX — rack instrumentu — previews/12-fx-instrumentu.png
+13. JAM — samodzielne granie — previews/13-jam.png
+14. Eksport audio → Audio Clip — previews/14-eksport-audio.png
+15. Eksport MIDI — previews/15-eksport-midi.png
+16. Routing — wyjścia FL Studio — previews/16-routing-fl.png
+17. Wspólne powroty Delay / Reverb — previews/17-powroty-fx.png
+18. Ustawienia — zegar i skalowanie — previews/18-ustawienia.png
+19. Bass — zaawansowane — previews/19-bass-zaawansowane.png
+20. Diagnostyka toru sygnału — previews/20-diagnostyka.png
+21. FX sumy MASTER — previews/21-master-fx.png

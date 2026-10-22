@@ -1,0 +1,107 @@
+[
+  [
+    "01-bass-brzmienie",
+    "bass",
+    "Bass — brzmienie"
+  ],
+  [
+    "02-bass-generator",
+    "bass-generator",
+    "Bass — styl i generator"
+  ],
+  [
+    "03-ambient",
+    "ambient",
+    "Ambient — synteza"
+  ],
+  [
+    "04-arp-generator",
+    "arp-generator",
+    "ARP — rytm i losowość"
+  ],
+  [
+    "05-arp-brzmienie",
+    "arp",
+    "ARP — synteza i stereo"
+  ],
+  [
+    "06-drums",
+    "drums",
+    "Drums — grid i edycja głosu"
+  ],
+  [
+    "07-krell",
+    "krell",
+    "Krell — własna synteza"
+  ],
+  [
+    "08-aranzer-song",
+    "arranger",
+    "Aranżer — sceny i song"
+  ],
+  [
+    "09-klip-generator",
+    "clip",
+    "Klip — nuty root / generator"
+  ],
+  [
+    "10-klip-nuty",
+    "manual",
+    "Klip — nuty manualne"
+  ],
+  [
+    "11-mikser",
+    "mixer",
+    "Mikser — poziomy i sendy"
+  ],
+  [
+    "12-fx-instrumentu",
+    "fx",
+    "FX — rack instrumentu"
+  ],
+  [
+    "13-jam",
+    "jam",
+    "JAM — samodzielne granie"
+  ],
+  [
+    "14-eksport-audio",
+    "export-audio",
+    "Eksport audio → Audio Clip"
+  ],
+  [
+    "15-eksport-midi",
+    "export-midi",
+    "Eksport MIDI"
+  ],
+  [
+    "16-routing-fl",
+    "routing",
+    "Routing — wyjścia FL Studio"
+  ],
+  [
+    "17-powroty-fx",
+    "returns",
+    "Wspólne powroty Delay / Reverb"
+  ],
+  [
+    "18-ustawienia",
+    "settings",
+    "Ustawienia — zegar i skalowanie"
+  ],
+  [
+    "19-bass-zaawansowane",
+    "advanced",
+    "Bass — zaawansowane"
+  ],
+  [
+    "20-diagnostyka",
+    "diagnostics",
+    "Diagnostyka toru sygnału"
+  ],
+  [
+    "21-master-fx",
+    "master-fx",
+    "FX sumy MASTER"
+  ]
+]
