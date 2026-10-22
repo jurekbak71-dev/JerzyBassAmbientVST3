@@ -1,0 +1,4 @@
+f2795c10b74cecd0f9051a8dfe6965a4395e0a03f15e2a0de9472a1e79556c79  GUI-PRO-0.8-real-screenshots.zip
+b5e1ee2c4ee1e9b17e7710676701f53447728c072a1ce074f179fdc481be9aeb  Jerzy Bass Ambient PRO.exe
+8e39f5dabd75530a7e907146f620692e74af1bc6d33fe033267932bd890bc4e3  Jerzy-Bass-Ambient-PRO-0.8-Windows-x64.zip
+185de0fdcbc2b2f55ba840605a8a222067ca23c1f8f498904e58eb54a7e0dc33  Jerzy-Bass-Ambient-PRO-VST3-Windows.zip
