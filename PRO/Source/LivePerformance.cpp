@@ -35,7 +35,7 @@ void BassAmbientProcessor::captureLiveSnapshot() {
 bool BassAmbientProcessor::returnLiveSnapshot() {
     const juce::ScopedLock lock(liveLock);
     if(!liveSnapshotReady){liveStatus="RETURN: capture a SNAPSHOT first";return false;}
-    for(const auto& value:liveSnapshot)setParameterValue(value.first,value.second);
+    for(const auto& value:liveSnapshot)if(state.getRawParameterValue(value.first)->load()!=value.second)setParameterValue(value.first,value.second);
     liveStatus="RETURN: sound and mix restored; transport continues";return true;
 }
 void BassAmbientProcessor::launchLiveScene(int scene) {
