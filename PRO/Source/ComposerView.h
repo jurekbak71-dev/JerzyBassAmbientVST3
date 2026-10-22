@@ -7,15 +7,26 @@ public:
     void resized() override;
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
-    int requiredHeight() const {return 1200;}
+    int requiredHeight() const {return 510;}
+    void showExport();
+    void focusScene(int index){selectScene(index);}
 private:
-    class SceneModel;class SongModel;class SongList;class NoteGrid;class MidiDrag;class AudioRenderJob;class AudioDrag;
+    class SceneModel;class SongModel;class SongList;class NoteGrid;class MidiDrag;class AudioRenderJob;class AudioDrag;class Matrix;class ExportPanel;
     BassAmbientProcessor& processor;
     jerzy::composer::Document document;
     std::unique_ptr<SceneModel> sceneModel;std::unique_ptr<SongModel> songModel;
     juce::ListBox scenes;
     std::unique_ptr<SongList> song;
     std::unique_ptr<NoteGrid> grid;
+    std::unique_ptr<Matrix> matrix;
+    std::unique_ptr<ExportPanel> exportPanel;
+    std::unique_ptr<juce::DialogWindow> exportWindow;
+    bool clipMode=false;
+    std::vector<jerzy::composer::Document> undoDocuments;
+    juce::TextButton undoEdit{"COFNIJ"};
+    juce::TextButton overview{"SCENY / SONG"},clipEditor{"EDYTOR KLIPU"},exportButton{"EKSPORT"};
+    juce::ComboBox exportFormat,sceneRecall;
+    std::array<juce::Label,12> inspectorLabels;
     std::unique_ptr<MidiDrag> dragMidi;
     std::unique_ptr<AudioRenderJob> audioJob;
     std::unique_ptr<AudioDrag> dragAudio;
@@ -24,8 +35,9 @@ private:
     uint64_t revision=0;bool updating=false;
     juce::Label heading,sceneTitle,songTitle,clipTitle,message;
     juce::TextEditor name,progression;
-    juce::Slider bars,tempo,intensity,repeat,bar,octave,velocity,notePan,gain,enter,leave,threshold;
+    juce::Slider bars,tempo,intensity,repeat,bar,octave,velocity,notePan,gain,enter,leave,threshold,noteLength;
     juce::ComboBox numerator,denominator,midiRange,midiTracks,audioScope,audioRate,audioBits,audioTail,audioFX;
+    juce::ToggleButton clipEnabled{"GRA W SCENIE"};
     juce::ToggleButton enabled{"COMPOSER"},play{"PLAY"},songMode{"SONG"},loop{"LOOP"},split{"SPLIT OUT"},midiPlay{"MIDI PARTS"},generated{"GENERATED"},cut{"CUT TAILS"},evolve{"EVOLVE"};
     std::array<juce::TextButton,8> tracks;
     juce::TextButton renderAudioButton{"RENDER WAV"};
@@ -37,7 +49,9 @@ private:
     void edit(const std::function<void(jerzy::composer::Document&)>&);
     void selectScene(int);
     void selectTrack(int);
-    void chooseExport(int);
+    void chooseExport(int,int track=-1);
+    void layoutExport();
+    void showClip(bool);
     void chooseProject(bool);
     void chooseAudioRender();
     void setMessage(const juce::String&);

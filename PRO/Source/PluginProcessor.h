@@ -37,6 +37,8 @@ public:
     void setStateInformation(const void*,int) override;
     jerzy::Parameters readParameters() const;
     juce::AudioProcessorValueTreeState state;
+    std::atomic<bool> restoredSession{false};std::atomic<float> editorScale{0};
+    std::atomic<int> lastMidiChannel{0},lastMidiNote{-1};
     std::atomic<int> rootDisplay{-1};
     std::atomic<float> peak{0};
     std::atomic<int> drumStep{-1},arpNote{-1};
@@ -46,6 +48,8 @@ public:
     bool isLearningMidi() const {return learnParameter.load()>=0;}
     void clearMidiMapping(const juce::String& id);
     juce::String midiAssignment(const juce::String& id) const;
+    std::atomic<unsigned> resetParts{0};
+    void resetMidiPart(int track){resetParts.fetch_or(1U<<track);}
     void requestPanic() {panicRequested=true;}
     void setParameterValue(const juce::String& id,float value);
 
@@ -79,6 +83,7 @@ private:
     const jerzy::composer::Timeline* playback=nullptr;
     size_t eventCursor=0;int sectionIndex=-1,playingScene=-1,lastResourceSection=-2;
     double composerOrigin=0,previousComposerBeat=-1,lastComposerPPQ=-1;
+    int lastPerformanceSource=-1;
     bool wasComposerPlaying=false,wasSongMode=false;
     jerzy::Parameters sectionPatch,lastControlSnapshot;
     std::array<double,8> tailUntil{};

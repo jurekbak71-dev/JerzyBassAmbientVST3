@@ -29,3 +29,6 @@ inline void tint(juce::Component& c,juce::Colour colour) {
     for(auto* child:c.getChildren())tint(*child,colour);
 }
 }
+
+// JUCE char* strings are ASCII; UI literals explicitly decode UTF-8 on every platform.
+inline juce::String operator""_ui(const char* value,size_t size){return juce::String::fromUTF8(value,int(size));}

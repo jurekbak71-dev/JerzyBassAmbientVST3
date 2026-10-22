@@ -69,6 +69,7 @@ void BassAmbientProcessor::adoptComposer(bool resetVoices){
     }
 }
 void BassAmbientProcessor::launchComposer(int scene,bool song){
+    setParameterValue("performanceSource",3);setParameterValue("modularMidi",0);
     setParameterValue("composerScene",float(scene+1));setParameterValue("composerSongMode",song?1:0);
     for(const char* name:{"bass","pad","arp","drums","krell"})setParameterValue(name,1);
     setParameterValue("autoPlay",0);setParameterValue("midiPlayback",0);setParameterValue("composerEnabled",1);setParameterValue("composerPlaying",1);
@@ -143,7 +144,7 @@ void BassAmbientProcessor::routePartMidi(const juce::MidiMessage& m,const Parame
     if(m.getChannel()==10){const int n=m.getNoteNumber();track=n==36?3:(n==38||n==40)?4:(n==42||n==44)?5:(n==39||n==46||n==45||n==47)?6:-1;}
     if(track==0&&m.isNoteOn()&&patch.harmonyLink)setParameterValue("harmonyRoot",float(m.getNoteNumber()));
     if(track<0||(!m.isNoteOn()&&!m.isNoteOff()))return;const bool power=track==0?patch.bass:track==1?patch.pad:track==2?patch.arp:track==7?patch.krell:patch.drums&&patch.drumSounds[size_t(track-3)].enabled;if(m.isNoteOn()&&!power)return;const auto id=0x80000000U|uint32_t(track*128+m.getNoteNumber());
-    instrument.externalNote(track,m.getNoteNumber(),m.getFloatVelocity(),0,id,m.isNoteOn(),false,false,&patch);
+    instrument.externalNote(track,m.getNoteNumber(),m.getFloatVelocity(),0,id,m.isNoteOn(),false,track==0&&patch.legato,&patch);
 }
 juce::Result BassAmbientProcessor::exportComposer(const juce::File& file,bool song,int scene,int track) const {
     try{auto data=composerDocument();data.tempo=readParameters().clockSource==0?readParameters().internalTempo:tempoDisplay.load();const auto result=compile(data);if(!song&&(scene<0||scene>=int(result.scenes.size())))return juce::Result::fail("Select a scene");return writeMidi(song?result.song:result.scenes[size_t(scene)],data.tempo,file,track);}

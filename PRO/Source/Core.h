@@ -30,6 +30,7 @@ struct FXParameters {
 
 struct DrumSettings { double level=.7, drive=.1, tone=.5, cutoff=12000, decay=.2, pan=0; bool enabled=true; };
 struct Parameters : FXParameters {
+    bool modularMidi=false;int performanceSource=0;int bassMidiMode=1,padMidiMode=0,arpMidiMode=1,krellMidiMode=1,drumsMidiMode=0;
     bool bass=true, pad=false, direct=false, latch=false, restart=false, evolve=false, legato=false;
     int model=0, bassWave=0, style=0, scale=1, division=2, bars=1, meter=0, numerator=4, denominator=4;
     int seed=71, chord=1, padMode=1, engine1=0, engine2=1;
@@ -515,6 +516,7 @@ class Instrument {
     std::array<Stereo,8> stems{};uint32_t externalBassId=0;
     std::array<int,128> arpNotes{};int arpNoteCount=0;
     bool previousArp=false,previousDrums=false,previousKrell=false;int midiRoot=-1;
+    int padMidiRoot=-1,arpMidiRoot=-1,krellMidiRoot=-1,previousPadRoot=-1;
     double dcInL=0,dcInR=0,dcOutL=0,dcOutR=0;
     void setupKrell(PadVoice& v,const Parameters& p,uint32_t id) {
         const double lo=std::min(p.krellMin,p.krellMax),hi=std::max(p.krellMin,p.krellMax);
@@ -527,16 +529,17 @@ class Instrument {
         v.pan=unit(uint32_t(p.seed),id*19+5)*2-1;
         v.velocity*=.45+.55*unit(uint32_t(p.seed),id*19+6);
     }
-    void startPad(const Parameters& p,bool replace) {
+    void startPad(const Parameters& p,bool replace,int suppliedRoot=-2) {
+        const int padRoot=suppliedRoot==-2?root:suppliedRoot;
         if(replace) for(auto& v:pads) v.off();
-        if(root<0) return;
+        if(padRoot<0) return;
         constexpr int chords[8][4]={{0,4,7,12},{0,3,7,12},{0,7,12,19},{0,5,7,12},{0,3,7,10},{0,4,7,11},{0,3,10,14},{0,4,11,14}};
         for(int i=0;i<4;++i) {
             PadVoice* selected=nullptr;
             for(auto& v:pads) if(!v.env.active()) { selected=&v;break; }
             if(!selected) { double oldest=-1;for(auto& v:pads) if(v.releasing&&v.age>oldest) { selected=&v;oldest=v.age; } }
             if(!selected) selected=&*std::max_element(pads.begin(),pads.end(),[](const auto& a,const auto& b){return a.age<b.age;});
-            double n=root+chords[clamp(p.chord,0,7)][i];
+            double n=padRoot+chords[clamp(p.chord,0,7)][i];
             while(n<48) n+=12;
             while(n>84) n-=12;
             if(p.padMode==2) n+=12*(unit(uint32_t(p.seed),++voiceSerial)>.8?1:0);
@@ -548,12 +551,16 @@ class Instrument {
     }
     void chooseRoot(const Parameters& p,double ppq) {
         Held* latest=nullptr;
-        for(auto& h:held) if((h.key||h.sustained)&&(!latest||h.serial>latest->serial)) latest=&h;
+        for(auto& h:held) if((h.key||h.sustained)&&(!p.modularMidi||h.channel==1)&&(!latest||h.serial>latest->serial)) latest=&h;
+        if(p.modularMidi){
+            auto channelRoot=[&](int channel){const Held* chosen=nullptr;for(const auto& h:held)if(h.channel==channel&&(h.key||h.sustained)&&(!chosen||h.serial>chosen->serial))chosen=&h;return chosen?chosen->note:-1;};
+            padMidiRoot=channelRoot(2);arpMidiRoot=channelRoot(3);krellMidiRoot=channelRoot(4);
+        }
         midiRoot=latest?latest->note:-1;
         arpNoteCount=0;
         // As-played ordering is stable by key serial, other patterns use pitch order.
         std::array<const Held*,128> keys{};
-        for(const auto& h:held) if((h.key||h.sustained)&&arpNoteCount<128) keys[size_t(arpNoteCount++)]=&h;
+        for(const auto& h:held) if((h.key||h.sustained)&&(!p.modularMidi||h.channel==3)&&arpNoteCount<128) keys[size_t(arpNoteCount++)]=&h;
         std::sort(keys.begin(),keys.begin()+arpNoteCount,[&](const Held* a,const Held* b){return p.arpPattern==3?a->serial<b->serial:a->note<b->note;});
         for(int i=0;i<arpNoteCount;++i)arpNotes[size_t(i)]=keys[size_t(i)]->note;
         int nextRoot=latest?latest->note:(p.latch?root:(p.autoPlay?p.autoRoot:-1));
@@ -566,14 +573,14 @@ class Instrument {
                 if(p.restart) { anchor=ppq;lastStep=std::numeric_limits<int64_t>::min(); }
                 if(p.direct) bass.note(root,velocity,p.legato&&overlapping,false);
                 else { bass.note(root,velocity,false,false);gateUntil=ppq+divisionBeats(p.division)*p.gate;previousSlide=false; }
-                if(p.pad) startPad(p,true);
-            } else { bass.off();for(auto& v:pads) v.off();previousSlide=false; }
+                if(p.pad&&!p.modularMidi) startPad(p,true);
+            } else { bass.off();if(!p.modularMidi)for(auto& v:pads)v.off();previousSlide=false; }
         } else if(latest) velocity=latest->velocity;
     }
 public:
     void prepare(double sr) { rate=sr;arpeggiator.prepare(sr);drumMachine.prepare(sr);krellSynth.prepare(sr);bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);arpRack.prepare(sr);krellRack.prepare(sr);for(auto& rack:drumRacks)rack.prepare(sr);delaySendRack.prepare(sr);reverbSendRack.prepare(sr);reset(); }
     void reset() {
-        arpeggiator.reset();drumMachine.reset();krellSynth.reset();arpNoteCount=0;midiRoot=-1;
+        arpeggiator.reset();drumMachine.reset();krellSynth.reset();arpNoteCount=0;midiRoot=-1;padMidiRoot=arpMidiRoot=krellMidiRoot=previousPadRoot=-1;
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
         for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.c={};v.d={};v.shimmer={};v.age=0; }
         bassRack.reset();padRack.reset();masterRack.reset();arpRack.reset();krellRack.reset();for(auto& rack:drumRacks)rack.reset();delaySendRack.reset();reverbSendRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
@@ -617,9 +624,15 @@ public:
         std::array<bool,8> result{};result[7]=krellSynth.active();result[0]=bass.active();for(const auto& v:pads)result[1]|=v.env.active();result[2]=arpeggiator.active();
         for(int i=0;i<4;++i)result[size_t(i+3)]=drumMachine.active(i);return result;
     }
+    void resetMidiPart(int track){int channel=track==0?1:track==1?2:track==2?3:track==7?4:10;for(auto& h:held)if(h.channel==channel)h=Held{};
+        if(track==0){bass.reset();root=midiRoot=-1;externalBassId=0;previousSlide=false;gateUntil=-1;}
+        else if(track==1){for(auto& v:pads)v.env.reset();padMidiRoot=previousPadRoot=-1;}
+        else if(track==2){arpeggiator.reset();arpMidiRoot=-1;arpNoteCount=0;}
+        else if(track==7){krellSynth.reset();krellMidiRoot=-1;}else drumMachine.reset();
+    }
     int currentRoot() const {return root;}
     int64_t stepPosition() const { return lastStep; }
-    void allOff() { arpeggiator.reset();drumMachine.reset();krellSynth.reset();midiRoot=-1;arpNoteCount=0;held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
+    void allOff() { arpeggiator.reset();drumMachine.reset();krellSynth.reset();midiRoot=-1;padMidiRoot=arpMidiRoot=krellMidiRoot=previousPadRoot=-1;arpNoteCount=0;held={};sustain.fill(false);root=-1;bass.off();for(auto& v:pads)v.off();previousSlide=false;gateUntil=-1; }
     void noteOn(int note,int channel,double v,const Parameters& p,double ppq) {
         if(note<0||note>127||channel<1||channel>16) return;
         if(v<=0) { noteOff(note,channel,p,ppq);return; }
@@ -658,7 +671,7 @@ public:
     }
     Stereo next(const Parameters& p,double ppq,int hostNumerator=4,int hostDenominator=4,bool external=false,unsigned splitMask=0) {
         if(!external) {
-        int generatedRoot=clamp(p.harmonyLink?p.harmonyRoot:p.autoRoot,12,96);const int baseRoot=generatedRoot;
+        int generatedRoot=clamp(p.harmonyLink||p.performanceSource==2?p.harmonyRoot:p.autoRoot,12,96);const int baseRoot=generatedRoot;
         if(p.autoPlay&&p.autoHarmony>0) {
             const double beatsPerBar=double(p.meter?p.numerator:hostNumerator)*4/std::max(1,p.meter?p.denominator:hostDenominator);
             const auto section=int64_t(std::floor(ppq/(std::max(1,p.harmonyBars)*beatsPerBar)));
@@ -694,11 +707,15 @@ public:
             }
             if(gateUntil>=0&&ppq>=gateUntil&&!previousSlide) { bass.off();gateUntil=-1; }
         }
-        if(!external&&root>=0&&p.pad) {
+        const bool routed=p.modularMidi&&!external;
+        const int padRoot=routed?(p.harmonyLink&&root>=0?root:padMidiRoot):root;
+        const bool generatePad=!external&&(!routed||p.padMidiMode==1);
+        if(routed&&generatePad&&padRoot!=previousPadRoot){startPad(p,true,padRoot);previousPadRoot=padRoot;}
+        if(generatePad&&padRoot>=0&&p.pad) {
             bool active=false;for(auto& v:pads) if(v.env.active()&&!v.releasing) active=true;
-            if(!active) startPad(p,false);
+            if(!active) startPad(p,false,padRoot);
             padClock+=1/rate;
-            if(p.padMode==1&&padClock>=p.evolution) { for(auto& v:pads)v.off();startPad(p,false); }
+            if(p.padMode==1&&padClock>=p.evolution) { for(auto& v:pads)v.off();startPad(p,false,padRoot); }
             if(p.padMode==2) {
                 // Each active voice ends its own cycle; release tails overlap its replacement.
                 for(size_t k=0;k<pads.size();++k) if(pads[k].env.active()&&!pads[k].releasing&&pads[k].age>pads[k].lifetime) {
@@ -708,7 +725,7 @@ public:
                     if(!replacement) for(auto& candidate:pads) if(candidate.releasing && &candidate!=&pads[k]) {replacement=&candidate;break;}
                     if(replacement) {
                         int degree=int(unit(uint32_t(p.seed),++voiceSerial)*(p.krellRange+1));
-                        double n=root+scaleOffset(degree,p.scale);while(n<48)n+=12;while(n>84)n-=12;
+                        double n=padRoot+scaleOffset(degree,p.scale);while(n<48)n+=12;while(n>84)n-=12;
                         replacement->start(n,pan,hash(uint32_t(p.seed)^voiceSerial),velocity);
                         setupKrell(*replacement,p,voiceSerial);
                     }
@@ -717,7 +734,7 @@ public:
         }
         double b=p.bass?bass.next(p,bend[size_t(rootChannel-1)])*p.bassLevel:0;
         Stereo dryBass{b,b},dryPad{};
-        if(p.pad) for(auto& v:pads) dryPad=dryPad+v.next(p,rate,bend[size_t(rootChannel-1)]);
+        if(p.pad) for(auto& v:pads) dryPad=dryPad+v.next(p,rate,bend[size_t(routed?1:rootChannel-1)]);
         dryPad=dryPad*p.padLevel;
         if(p.fxEnabled) {
             if(p.bass&&p.bassFX>0)dryBass=dryBass*(1-p.bassFX)+bassRack.process(dryBass,p,bpm)*p.bassFX;
@@ -726,10 +743,14 @@ public:
         if(previousArp&&!p.arp) arpeggiator.reset();
         if(previousDrums&&!p.drums)drumMachine.reset();
         previousArp=p.arp;previousDrums=p.drums;
-        Stereo arpOut{};if(p.arp)arpOut=arpeggiator.next(p,ppq,external?1:root,arpNotes.data(),arpNoteCount,bend[size_t(rootChannel-1)],!external);
-        if(p.drums)drumMachine.next(p,ppq,!external&&(wasPlaying||root>=0||p.autoPlay));
+        const bool generateArp=!external&&(!routed||p.arpMidiMode==1);
+        const int arpRoot=routed?(p.harmonyLink&&root>=0?root:arpMidiRoot):root;
+        const int arpTranspose=routed&&p.harmonyLink&&root>=0&&arpNoteCount>0?root-*std::min_element(arpNotes.begin(),arpNotes.begin()+arpNoteCount):0;
+        Stereo arpOut{};if(p.arp)arpOut=arpeggiator.next(p,ppq,generateArp?arpRoot:1,arpNotes.data(),arpNoteCount,bend[size_t(routed?2:rootChannel-1)],generateArp,arpTranspose);
+        if(p.drums)drumMachine.next(p,ppq,!external&&(!routed||p.drumsMidiMode==1)&&(wasPlaying||root>=0||p.autoPlay));
         if(p.fxEnabled&&p.arp&&p.arpFX>0)arpOut=arpOut*(1-p.arpFX)+arpRack.process(arpOut,p.arpRack,bpm)*p.arpFX;
-        auto krellOut=p.krell?krellSynth.next(p,root,external):Stereo{};if(previousKrell&&!p.krell)krellSynth.reset();previousKrell=p.krell;
+        const int krellRoot=routed?(p.harmonyLink&&root>=0?root:krellMidiRoot):root;
+        auto krellOut=p.krell?krellSynth.next(p,krellRoot,external||(routed&&p.krellMidiMode==0)):Stereo{};if(previousKrell&&!p.krell)krellSynth.reset();previousKrell=p.krell;
         if(p.fxEnabled&&p.krell&&p.krellFX>0)krellOut=krellOut*(1-p.krellFX)+krellRack.process(krellOut,p.krellRack,bpm)*p.krellFX;
         stems={dryBass,dryPad,arpOut};stems[7]=krellOut;
         if(p.drums)for(int lane=0;lane<4;++lane){auto drum=drumMachine.outputs[size_t(lane)];if(p.fxEnabled&&p.drumSounds[size_t(lane)].enabled&&p.drumsFX>0)drum=drum*(1-p.drumsFX)+drumRacks[size_t(lane)].process(drum,p.drumsRack,bpm)*p.drumsFX;stems[size_t(lane+3)]=drum;}

@@ -9,7 +9,8 @@ public:
     void paint(juce::Graphics& g) override {
         bool in=false,active=false;float out=0;
         for(int t=first;t<=last;++t){in|=processor.inputPulse[size_t(t)].load()>0;active|=processor.activePulse[size_t(t)].load()>0;out=std::max(out,processor.channelPeak[size_t(t)].load());}
-        const bool states[]{in,active,out>.00003f,out>=1};const juce::Colour colours[]{juce::Colour(0xffffd064),juce::Colour(0xff72ee84),juce::Colour(0xff63dbd0),juce::Colour(0xffff534f)};const char* names[]{"IN","ACT","OUT","CLP"};
+        if(getWidth()<110){const char* labels[]{"IN","OUT"};for(int i=0;i<2;++i){float x=float(i)*getWidth()/2+3;g.setColour((i==0?juce::Colour(0xffffd064):out>=1?juce::Colours::red:juce::Colour(0xff63dbd0)).withAlpha((i==0?in:out>.00003f)?1.f:.18f));g.fillEllipse(x,5,5,5);g.setColour(juce::Colour(0xff9aabba));g.setFont(8);g.drawText(labels[i],int(x+7),0,getWidth()/2-9,16,juce::Justification::centredLeft);}return;}
+        const bool states[]{in,active,out>.00003f,out>=1};const juce::Colour colours[]{juce::Colour(0xffffd064),juce::Colour(0xff72ee84),juce::Colour(0xff63dbd0),juce::Colour(0xffff534f)};const juce::String names[]{"IN","ACT","OUT","CLP"};
         const float width=float(getWidth())/4;
         for(int i=0;i<4;++i){const float x=i*width+6;g.setColour(colours[i].withAlpha(states[i]?1.0f:.15f));g.fillEllipse(x,5,6,6);g.setColour(juce::Colour(0xffb9c5d2));g.setFont(9);g.drawText(names[i],int(x+9),0,int(width-13),16,juce::Justification::centredLeft);}
     }
@@ -28,24 +29,26 @@ public:
         play.onClick=[this]{processor.transport(true);};stop.onClick=[this]{processor.transport(false);};
         tap.onClick=[this]{const double now=juce::Time::getMillisecondCounterHiRes();if(lastTap>0&&now-lastTap<2000&&now-lastTap>150){intervals.push_back(now-lastTap);if(intervals.size()>4)intervals.erase(intervals.begin());double sum=0;for(auto value:intervals)sum+=value;processor.setParameterValue("internalTempo",float(juce::jlimit(30.0,240.0,60000*intervals.size()/sum)));}else intervals.clear();lastTap=now;};timerCallback();startTimerHz(15);
     }
-    void timerCallback() override {const auto p=processor.readParameters();tempo.setEnabled(p.clockSource==0);tap.setEnabled(p.clockSource==0);const int sync=processor.clockStatus.load();const char* names[]{"INTERNAL","SYNC","WAIT","LOST"};const double beat=processor.beatDisplay.load();status.setText(juce::String(names[juce::jlimit(0,3,sync)])+"   "+juce::String(processor.tempoDisplay.load(),1)+" BPM   |   "+juce::String(int(beat/std::max(.25,processor.clockBarBeats.load()))+1)+":"+juce::String(1+std::fmod(beat,std::max(.25,processor.clockBarBeats.load())),1),juce::dontSendNotification);status.setColour(juce::Label::textColourId,sync<2?juce::Colour(0xff61e0c1):juce::Colour(0xffffd064));play.setToggleState(p.composerPlaying||p.autoPlay,juce::dontSendNotification);repaint();}
+    void timerCallback() override {const auto p=processor.readParameters();tempo.setEnabled(p.clockSource==0);if(p.clockSource!=0)tempo.setValue(processor.tempoDisplay.load(),juce::dontSendNotification);tap.setEnabled(p.clockSource==0);const int sync=processor.clockStatus.load();const juce::String names[]{"INTERNAL","SYNC","WAIT","LOST"};const double beat=processor.beatDisplay.load();status.setText(juce::String(p.clockSource==0?"BPM":sync>=2?"FL: STOP / CLOCK?":"SYNC"),juce::dontSendNotification);status.setColour(juce::Label::textColourId,sync<2?juce::Colour(0xff61e0c1):juce::Colour(0xffffd064));play.setToggleState(p.composerPlaying||p.autoPlay,juce::dontSendNotification);repaint();}
     void paint(juce::Graphics& g) override {const bool pulse=processor.clockStatus.load()<2&&std::fmod(processor.beatDisplay.load(),1.0)<.16;g.setColour(juce::Colour(0xff61e0c1).withAlpha(pulse?1.0f:.15f));g.fillEllipse(float(getWidth()-12),12,8,8);}
-    void resized() override {clock.setBounds(0,2,170,30);tempo.setBounds(178,2,110,30);play.setBounds(296,2,66,30);stop.setBounds(368,2,66,30);tap.setBounds(440,2,58,30);status.setBounds(508,2,getWidth()-508,30);}
+    void resized() override {clock.setVisible(false);tap.setVisible(false);tempo.setBounds(0,2,86,30);play.setBounds(92,2,62,30);stop.setBounds(160,2,50,30);status.setBounds(216,2,getWidth()-228,30);}
 };
 
 class HarmonyView final : public juce::Component {
-    juce::Slider root;juce::ComboBox scale;juce::ToggleButton link{"LINK ROOT + SCALE"};juce::Label label,info;
+    BassAmbientProcessor& processor;
+    juce::Slider root;juce::ComboBox scale;juce::ToggleButton link{"WSPÓLNY ROOT"_ui};juce::Label label,info;
     juce::AudioProcessorValueTreeState::SliderAttachment rootAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment scaleAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment linkAttachment;
 public:
-    explicit HarmonyView(BassAmbientProcessor& p):rootAttachment(p.state,"harmonyRoot",root),scaleAttachment(p.state,"scale",scale),linkAttachment(p.state,"harmonyLink",link){
-        label.setText("HARMONY / ROOT",juce::dontSendNotification);info.setText("LINK: generated parts follow Bass roots; MANUAL notes stay exact",juce::dontSendNotification);
+    explicit HarmonyView(BassAmbientProcessor& p):processor(p),rootAttachment(p.state,"harmonyRoot",root),scaleAttachment(p.state,"scale",scale),linkAttachment(p.state,"harmonyLink",link){
+        label.setText("ROOT / SKALA",juce::dontSendNotification);info.setText("LINK: generated parts follow Bass roots; MANUAL notes stay exact",juce::dontSendNotification);
         root.setSliderStyle(juce::Slider::IncDecButtons);root.setTextBoxStyle(juce::Slider::TextBoxLeft,false,66,26);root.textFromValueFunction=[](double v){return juce::MidiMessage::getMidiNoteName(int(v),true,true,4);};root.valueFromTextFunction=[](const juce::String& text){for(int n=12;n<=96;++n)if(juce::MidiMessage::getMidiNoteName(n,true,true,4).equalsIgnoreCase(text.trim()))return double(n);return 36.0;};root.updateText();root.setTooltip("Shared root MIDI note. C2 = MIDI 36. LINK applies it to generators, not MANUAL notes.");
         scale.addItemList({"Major","Minor","Dorian","Harmonic minor","Minor pentatonic"},1);scale.setSelectedId(p.readParameters().scale+1,juce::dontSendNotification);
         for(auto* c:std::initializer_list<juce::Component*>{&root,&scale,&link,&label,&info})addAndMakeVisible(*c);
     }
-    void resized() override {label.setBounds(0,0,138,28);root.setBounds(142,0,108,28);scale.setBounds(260,0,165,28);link.setBounds(435,0,190,28);info.setBounds(635,0,getWidth()-635,28);}
+    void refresh(){auto p=processor.readParameters();bool arrange=p.composerEnabled;bool jam=p.performanceSource==2||p.autoPlay;root.setEnabled(jam);root.setVisible(!arrange);label.setText(arrange?"AKORDY / SKALA":"ROOT / SKALA",juce::dontSendNotification);info.setVisible(arrange);info.setText("Ze sceny",juce::dontSendNotification);info.setBounds(94,0,90,28);if(!jam&&processor.rootDisplay>=0)root.setValue(processor.rootDisplay.load(),juce::dontSendNotification);root.setTooltip(jam?"Wspólny root dla JAM. Rejestr pozostaje w ustawieniach instrumentów."_ui:"Root sterowany nutami MIDI 1; w aranżerze — progresją sceny."_ui);}
+    void resized() override {label.setBounds(0,0,90,28);root.setBounds(94,0,90,28);scale.setBounds(192,0,130,28);link.setBounds(330,0,135,28);info.setVisible(false);}
 };
 
 class MixerView final : public juce::Component,private juce::Timer {
@@ -70,16 +73,16 @@ public:
         bind(master,"master",true);bind(delayReturn,"sendDelayReturn");bind(reverbReturn,"sendReverbReturn");bind(feedback,"sendFeedback");bind(room,"sendRoom");bind(drumsPower,"drums");bind(limiter,"limiter");bind(split,"separateOutputs");bind(fx,"fxEnabled");bind(delayPower,"sendDelayPower");bind(reverbPower,"sendReverbPower");bind(sceneRecall,"sceneMixer");division.addItemList({"1/4","1/8","1/16","1/32","1/8T","1/16T","1/16D"},1);addAndMakeVisible(division);choice=std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(p.state,"sendDivision",division);startTimerHz(25);
     }
     void mouseDown(const juce::MouseEvent& e) override {if(!e.mods.isRightButtonDown())return;const auto id=e.eventComponent->getComponentID();if(id.isEmpty())return;if(e.mods.isCtrlDown())processor.learnMidi(id);else if(auto* p=processor.state.getParameter(id))p->setValueNotifyingHost(p->getDefaultValue());}
-    int requiredHeight() const {return 700;}
+    int requiredHeight() const {return 520;}
     void timerCallback() override {for(auto& s:strips)s.leds->repaint();repaint();}
     void resized() override {const int cw=(getWidth()-24)/9;
-        for(int t=0;t<8;++t){auto& s=strips[size_t(t)];int x=12+t*cw;s.title.setBounds(x,10,cw-6,26);s.leds->setBounds(x,40,cw-6,20);s.power.setBounds(x,66,cw-6,26);s.mute.setBounds(x,98,(cw-8)/2,26);s.solo.setBounds(x+cw/2,98,(cw-8)/2,26);s.pan.setBounds(x+6,148,cw-18,48);s.fader.setBounds(x+12,206,cw-44,230);s.delay.setBounds(x+6,466,cw-18,50);s.reverb.setBounds(x+6,548,cw-18,50);}
-        const int x=12+8*cw;master.setBounds(x+4,90,cw-24,340);limiter.setBounds(x,440,cw-6,28);split.setBounds(x,476,cw-6,28);fx.setBounds(x,512,cw-6,28);drumsPower.setBounds(x,548,cw-6,28);
-        const int rw=(getWidth()-32)/8;delayPower.setBounds(16,620,rw-6,28);delayReturn.setBounds(16+rw,616,rw-6,48);feedback.setBounds(16+2*rw,616,rw-6,48);division.setBounds(16+3*rw,620,rw-6,28);reverbPower.setBounds(16+4*rw,620,rw-6,28);reverbReturn.setBounds(16+5*rw,616,rw-6,48);room.setBounds(16+6*rw,616,rw-6,48);sceneRecall.setBounds(getWidth()-150,668,138,26);
+        for(int t=0;t<8;++t){auto& s=strips[size_t(t)];int x=12+t*cw;s.title.setBounds(x,5,cw-6,24);s.leds->setBounds(x,30,cw-6,18);s.power.setVisible(false);s.mute.setBounds(x,52,(cw-8)/2,25);s.solo.setBounds(x+cw/2,52,(cw-8)/2,25);s.pan.setBounds(x+5,96,cw-16,42);s.fader.setBounds(x+8,145,cw-35,185);s.delay.setBounds(x+5,350,cw-16,42);s.reverb.setBounds(x+5,410,cw-16,42);}
+        const int x=12+8*cw;master.setBounds(x+3,52,cw-24,280);limiter.setBounds(x,350,cw-6,28);split.setVisible(false);fx.setVisible(false);drumsPower.setVisible(false);sceneRecall.setVisible(false);
+        for(auto* c:std::initializer_list<juce::Component*>{&feedback,&division,&room})c->setVisible(false);delayPower.setBounds(16,470,140,28);delayReturn.setBounds(165,463,170,48);reverbPower.setBounds(410,470,140,28);reverbReturn.setBounds(560,463,170,48);
     }
     void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xff111720));const int cw=(getWidth()-24)/9;g.setFont(11);
         auto meter=[&](int channel,int x,int y,int h){const float value=channel<10?processor.channelPeak[size_t(channel)].load():processor.peak.load();const float db=juce::jlimit(0.0f,1.0f,(juce::Decibels::gainToDecibels(std::max(value,.000001f))+60)/60);g.setColour(juce::Colour(0xff26303c));g.fillRect(x,y,10,h);g.setColour(value>=1?juce::Colour(0xffff534f):juce::Colour(0xff61e0c1));g.fillRect(x,y+h-int(db*h),10,int(db*h));};
-        for(int t=0;t<8;++t){int x=12+t*cw;g.setColour(ProVisual::tracks[size_t(t)].withAlpha(.6f));g.drawRoundedRectangle(float(x),4,float(cw-6),596,6,1);g.setColour(ProVisual::tracks[size_t(t)]);g.drawText("PAN",x,128,cw-6,18,juce::Justification::centred);g.drawText("DELAY SEND",x,444,cw-6,18,juce::Justification::centred);g.drawText("REVERB SEND",x,526,cw-6,18,juce::Justification::centred);meter(t,x+cw-26,212,194);}
-        const int x=12+8*cw;g.setColour(juce::Colours::white);g.drawText("MASTER",x,10,cw-6,26,juce::Justification::centred);meter(10,x+cw-20,96,300);meter(8,132,620,28);meter(9,720,620,28);g.setColour(juce::Colour(0xffa3afbf));g.drawText("Delay return       Feedback                         Reverb return       Size   |   Sends: post fader / post mute",16,684,getWidth()-190,16,juce::Justification::centredLeft);
+        for(int t=0;t<8;++t){int x=12+t*cw;g.setColour(ProVisual::tracks[size_t(t)].withAlpha(.6f));g.drawRoundedRectangle(float(x),4,float(cw-6),452,6,1);g.setColour(ProVisual::tracks[size_t(t)]);g.drawText("PAN",x,78,cw-6,18,juce::Justification::centred);g.drawText("DELAY SEND",x,330,cw-6,18,juce::Justification::centred);g.drawText("REVERB SEND",x,390,cw-6,18,juce::Justification::centred);meter(t,x+cw-22,151,145);}
+        const int x=12+8*cw;g.setColour(juce::Colours::white);g.drawText("MASTER",x,10,cw-6,26,juce::Justification::centred);meter(10,x+cw-20,58,240);g.setColour(juce::Colour(0xffa3afbf));g.drawText("Sendy: po faderze / Mute. Powroty Delay i Reverb: przycisk POWROTY FX. Routing: USTAWIENIA.",760,474,getWidth()-775,32,juce::Justification::centredLeft);
     }
 };

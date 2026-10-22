@@ -1,4 +1,4 @@
-# PRO 0.6 — Composer, Mixer and Clock
+# PRO 0.7 — Composer, Mixer and Clock
 
 ## Start music in the standalone
 
@@ -61,3 +61,11 @@ The always-visible HARMONY panel provides ROOT and SCALE. LINK is optional and d
 KRELL is an independent instrument and tab, with evolving FM, resonant noise and harmonic-cloud synthesis, separate attack/release, cycle range, pitch range, stereo motion, power, FX rack, Composer clip, MIDI channel 4 and mixer strip. Its output bus is appended after the existing Delay/Reverb buses to preserve previous bus indices. The Ambient legacy Krell mode remains available for compatibility. Select Independent Krell from Factory scenes and press PLAY for a quick standalone audition; inside Composer enable the KRELL clip in the scene. CC34 controls Krell power by default.
 
 Bass Guitar Groove, Rock/Metal/Punk/Blues Bass Guitar presets and Independent Krell are included in the factory menu.
+
+## GUI 0.7 and per-instrument MIDI
+
+The MIDI source routes channels independently (1 Bass, 2 Pad, 3 Arp, 4 Krell, 10 Drums). Each part selects literal Notes or its Generator; Drums selects Notes or Sequencer. Shared harmony affects generators, not manual notes. New parameters are appended; restored pre-0.7 states retain legacy routing until explicitly changed. Navigating views does not send note-offs or change audio parameters.
+
+JAM selection waits for PLAY. MIDI PLAY never starts autonomous JAM. Global presets in the new source modes preserve routing, transport, clock and harmony preferences; local sound presets affect only their own synthesis parameters. Variant undo is local to generator parameters; Composer document undo retains up to 40 editor changes and excludes global synthesis and file loading.
+
+UI scale is stored with host state. Automatic scale fits width and height; advanced controls remain scrollable. The exported GUI gallery is captured from compiled JUCE components by the integration test, not generated from HTML mockups.

@@ -1,80 +1,78 @@
-# Jerzy Bass Ambient PRO 0.6 — szybki start
+# Jerzy Bass Ambient PRO 0.7 — szybki start
 
-W EXE wybierz urządzenie wyjściowe w ustawieniach Audio/MIDI. Ustaw CLOCK na INTERNAL, wybierz BPM i naciśnij PLAY. W FL Studio wybierz HOST / FL STUDIO i uruchom transport DAW.
+## Gdzie włączyć muzykę
+
+Na górze wybierz źródło sterowania:
+
+- **MIDI**: graj z klawiatury lub Piano Roll. W instrumencie wybierz **NUTY**, aby odtwarzać zapis dokładnie, albo **GENERATOR**, aby przytrzymana nuta uruchamiała styl, arpeggio lub generowane akordy. PLAY nie uruchamia samoczynnej muzyki w tym trybie.
+- **JAM**: granie bez klawiatury. Wybierz preset całości, root i skalę, włącz potrzebne instrumenty i naciśnij **PLAY**. Przycisk **ZAPISZ JAM JAKO SCENĘ** zachowuje ustawienia oraz udział instrumentów w nowej scenie.
+- **ARANŻER**: przejdź do scen i songu. **SONG ON** odtwarza song, **SONG OFF** wybraną scenę. **START SCENY** uruchamia zaznaczoną scenę. **LOOP** zapętla odtwarzanie. PLAY i STOP są wspólne dla całego instrumentu.
+- **MIDI — zgodność**: zachowana obsługa starszych projektów PRO. Stary zapis wybiera ją automatycznie; przejście na nowe MIDI jest świadomą zmianą sposobu sterowania.
+
+W EXE wybierz urządzenie wyjściowe w systemowym panelu Audio/MIDI aplikacji. W **USTAWIENIA** wybierz zegar **INTERNAL** i ustaw BPM na górnym pasku. We FL Studio użyj **HOST / FL STUDIO** oraz transportu FL; pole BPM pokazuje wtedy tempo hosta. **MIDI CLOCK** wymaga przychodzącego zegara. Komunikat o zatrzymanym zegarze pomaga rozpoznać brak transportu.
+
+## Trzy główne widoki
+
+**INSTRUMENTY**: po lewej Bass, Ambient, Arp, Drums i Krell, każdy z własnym POWER i diodami IN/OUT. Po prawej **BRZMIENIE**, **GENERATOR** oraz **EFEKTY**. Parametry rzadziej używane są pod **ZAAWANSOWANE**. Lokalny preset zmienia tylko wybrany instrument. **NOWY WARIANT / COFNIJ** dotyczy ustawień muzycznych wybranego generatora.
+
+**ARANŻER**: biblioteka scen po lewej, klocki songu i macierz instrumentów pośrodku, właściwości po prawej. Edytor klipu jest osobnym widokiem. **COFNIJ** przywraca ostatnie edycje dokumentu z tej sesji edytora (do 40 zmian); nie obejmuje globalnych parametrów syntezy ani wczytywania projektu.
+
+**MIKSER**: osiem ścieżek instrumentów, powroty Delay/Reverb i master. Dostęp do **MASTER FX**, **POWROTY FX** i **ROUTING FL** jest tutaj. Głośność i panorama instrumentu mają główne miejsce w mikserze. Parametry techniczne i rozszerzone pozostają dostępne w ustawieniach zaawansowanych.
+
+## MIDI: kanały i generatory
+
+| Instrument | Kanał MIDI | Działanie |
+| --- | --- | --- |
+| Bass | 1 | NUTY albo generator stylu |
+| Ambient / Pad | 2 | NUTY albo generowane akordy / Flow |
+| Arp | 3 | NUTY albo arpeggiowanie trzymanych nut |
+| Krell | 4 | NUTY albo własny generator Krell |
+| Drums | 10 | NUTY MIDI / GM albo SEKWENCER |
+
+Perkusja: Kick 36, Snare 38/40, Hat 42/44, Aux według wybranego brzmienia. **Aux** to czwarty głos: Clap, Open Hat lub Tom.
+
+Nuty wyeksportowane z generatorów odtwarzaj w trybie **NUTY**, aby nie generować ich ponownie. Dopilnuj kanału MIDI: Pad wymaga kanału 2, Arp 3. Samo rozdzielenie wyjść audio nie kieruje nut MIDI.
+
+**WSPÓLNY ROOT** łączy generatory ze źródłem basu i wspólną skalą. Nie zmienia dosłownych nut w trybie NUTY. W MIDI root pochodzi z granego basu; w JAM ustawiasz go na pasku; w aranżerze pochodzi z progresji / klipu basu. Wyłączenie linku daje generatorom niezależne rooty. Przytrzymana długa nuta basu wyzwala powtarzające się frazy aż do note-off.
 
 ## Bass Guitar i style
 
-W BASS wybierz model Bass Guitar. Finger/Pick/Slap określa sposób pobudzenia struny; Tone, Palm Mute, String Decay i Pluck Position zmieniają charakter dźwięku. To synteza modelująca strunę, a nie biblioteka sampli.
+W **Bass → Brzmienie → Bass model** wybierz **Bass Guitar**. Finger/Pick/Slap, Tone, Palm Mute i String Decay zmieniają modelowaną strunę. To synteza, nie biblioteka sampli. W **Generator** wybierz Rock, Metal, Punk albo Blues oraz długość frazy w taktach. W MIDI ustaw GENERATOR i przytrzymaj nutę; do odsłuchu bez nut użyj JAM. Swing pomaga uzyskać shuffle bluesowy.
 
-Generator ma style Rock, Metal, Punk i Blues. Użyj bazowego podziału 1/16; do bluesowego shuffle ustaw Swing około 0.6. W menu Factory scenes są gotowe presety Bass Guitar Groove oraz Rock/Metal/Punk/Blues Bass Guitar. PLAY pozwala ich posłuchać bez klawiatury MIDI.
+## Sceny i długość nut
 
-## Wspólny root i skala
+Długość sceny ustawiasz w prawym inspektorze **DŁUGOŚĆ SCENY — TAKTY**. Metrum sceny jest na dole inspektora. Pole progresji przyjmuje np. `Cm Ab Fm G`; zatwierdź Enterem. Jeden akord przypada na takt, progresja powtarza się.
 
-Panel HARMONY jest stale widoczny. ROOT ustawia nutę bazową, SCALE skalę, a LINK łączy generatory.
+W **EDYTOR KLIPU** wybierz instrument i **GENERATOR: ROOT** lub **NUTY MANUALNE**. Generator interpretuje nuty jako podstawy i sam buduje frazę. Przycisk **ZAMIEŃ GENERATOR NA NUTY** utrwala jego wynik do edycji. Gdy wspólny root jest włączony, podstawy połączonych generatorów edytuj w basie.
 
-Przy LINK ON partie MODULE Ambient, Arp i Krell podążają za rootami basu. Wpisz pierwszą nutę bazową C w partii BASS lub zagraj ją przez MIDI: wspólny ROOT zostanie ustawiony na C. Zmiana ROOT transponuje połączone partie generowane. Partie MANUAL zachowują wpisane nuty. Jawnie wpisana progresja akordów nadal określa jakość akordów sceny.
+Kliknięcie siatki dodaje nutę, prawoklik usuwa, przeciągnięcie poziomo zmienia długość. **DŁUGOŚĆ NUTY — ĆWIERĆNUTY**: 1 to ćwierćnuta, 4 cała nuta. Wartość dotyczy zaznaczonej lub następnej dodawanej nuty. Wybór taktu i oktawy przy siatce zmienia zakres edycji / widoku. **UDZIAŁ INSTRUMENTU**, wejście od taktu i ostatni takt ograniczają granie partii.
 
-Przy LINK OFF każdy moduł może mieć własne rooty. To domyślne ustawienie, aby zachować niezależne partie ze starszych projektów. Gdy LINK jest włączony, rooty połączonych generatorów edytuj w BASS; komunikat w Composerze wyjaśni blokadę niezależnej edycji ich rootów.
+Sceny przeciągaj do songu; klocki przeciągaj, aby zmieniać kolejność. W inspektorze wybieraj powtórzenia i EVOLVE. WARIANT tworzy osobną kopię sceny; kolejne wystąpienia tej samej sceny są ze sobą powiązane. ZAPISZ/WCZYTAJ obsługuje projekt `.jpro`.
 
-## Osobny Krell
+## FX i wysyłki
 
-Zakładka KRELL to oddzielny instrument, działający równolegle z Ambientem. Ma własne silniki Evolving FM, Resonant Noise i Harmonic Cloud oraz obwiednię, czasy cykli, zakres wysokości, filtr, panoramę i poziom.
+Każdy instrument ma własny rack, a mikser osobny MASTER FX. Przeciągaj bloki efektów, aby zmieniać kolejność; prawoklik bloku udostępnia przesuwanie. Włącz efekt i podnieś jego Mix oraz udział racka. Jeden globalny przycisk **FX** znajduje się na górze.
 
-Do szybkiego odsłuchu wybierz Independent Krell z Factory scenes i PLAY. W Composerze włącz klocek KRELL w wybranej scenie i użyj LAUNCH SCENE. Krell ma własny kanał miksera, rack FX, wyjście audio i nuty MIDI na kanale 4. CC34 przełącza jego zasilanie. Dawny tryb Krell w Ambiencie pozostał dla starszych projektów.
+W mikserze podnieś Delay lub Reverb Send, a w **POWROTY FX** włącz i ustaw odpowiedni powrót. POWER instrumentu zatrzymuje jego obliczenia, Mute wycisza miks. Wyłączenie FX zwalnia duże bufory poza wątkiem audio. Stałe małe struktury głosów pozostają zarezerwowane.
 
-## Composer: długość i sposób grania
+**Mikser bieżący / Mikser zapisany w scenach** określa źródło miksu aranżera. **ZAPISZ BRZMIENIE DO SCENY** zapisuje bieżący zestaw w scenie. Preset całości zmienia zestaw instrumentów; w nowych trybach zachowuje źródło sterowania, zegar i wspólną harmonię.
 
-Bars pod polem CHORDS określa długość sceny (1–32 takty). Bar nad siatką wybiera takt do edycji. Kliknięcie dodaje nutę; przeciągnięcie poziomo zmienia jej długość; prawoklik ją usuwa.
+## Eksport MIDI i audio do FL Studio
 
-MODE: MANUAL odtwarza wpisane nuty. MODE: MODULE rozwija rooty w frazę basową, arpeggio, akordy lub cykle Krella. FREEZE / EDIT zamienia wynik generatora na nuty MANUAL. Eksport MIDI zapisuje wynikowe nuty.
+Wspólny przycisk **EKSPORT** na górze otwiera wybór **AUDIO WAV / MIDI** oraz zakres **Scena / Instrument ze sceny / Cały song**. Dla WAV dostępne są też osobne ścieżki sceny lub songu, 44,1/48/96 kHz, 24-bit PCM/32-bit float i ogon 0/5/10/20/45 s. Instrument wybierz wcześniej w edytorze klipu. Rendering korzysta z niezależnej kopii aranżacji i ustawień.
 
-Enter bar i Last bar pod siatką ograniczają czas aktywności partii. Fabryczne Intro wpuszcza ARP od 3. taktu. Aby grał od początku, ustaw Enter bar na 1. Nuty poza aktywnym zakresem nie zagrają.
+Po renderingu przeciągnij **DRAG WAV TO FL** do Playlisty, aby utworzyć Audio Clip. MIDI przeciągaj do Piano Roll, a wielościeżkowe MIDI importuj z zachowaniem kanałów. **PATTERN PACK** zapisuje oddzielne pliki MIDI. To standardowe pliki i przeciąganie systemowe; aplikacja nie zapisuje natywnych patternów FL przez prywatne API. Przeciąganie wymaga obsługi przez host i system.
 
-## FX i mikser
+Osobne WAV-y są wyrównane w czasie i obejmują osiem instrumentów oraz dwa powroty FX. Są przed MASTER FX i limiterem; eksport stereo zawiera końcowy master. DRY pomija racki i wysyłki, zachowując syntezę oraz gain/pan.
 
-W FX są racki BASS, AMBIENT, MASTER, ARPEGGIO, DRUMS i KRELL. Własny regulator FX amount musi być większy od zera. Wspólne ustawienia DRUMS są przetwarzane niezależnie dla czterech głosów, aby zachować osobne wyjścia Kick/Snare/Hi-hat/Aux.
+## Osobne kanały miksera FL
 
-FX POWER jest nadrzędnym włącznikiem. Naprawiono przypadek, w którym scena zapisana z FX OFF blokowała wysyłki mimo widocznego globalnego ON.
+W wrapperze FL: ustawienia wtyczki → Processing / Connections → przypisz dodatkowe wyjścia do insertów. W **Mikser → ROUTING FL** włącz rozdzielenie. Kolejność stereo: MAIN, BASS, PAD, ARP, KICK, SNARE, HI-HAT, AUX, DELAY RETURN, REVERB RETURN, KRELL. Podłączone i rozdzielone ścieżki są usuwane z MAIN, aby nie podwajać odsłuchu. Niepodłączone pozostają w sumie.
 
-W MIXER podnieś DELAY SEND lub REVERB SEND na wybranym kanale. Włącz odpowiedni powrót DELAY/REVERB i ustaw jego poziom. Mute oraz Solo obejmują nowy sygnał kierowany do wysyłek. POWER zatrzymuje instrument, a Mute pozostawia pracujące głosy.
+## Ekran, diagnostyka i zgodność
 
-SCENE MIX OFF daje globalne sterowanie miksem oraz rackami MASTER/ARPEGGIO/DRUMS/KRELL. ON przywołuje ustawienia sceny; CAPTURE SOUND zapisuje bieżący zestaw.
+Okno dopasowuje się do dostępnego ekranu i można je zmniejszyć do 900×540. W USTAWIENIA jest skala Auto / 75 / 85 / 100%. Auto dopasowuje cały układ; dłuższe panele zaawansowane przewijasz. Diody IN i OUT pokazują sterowanie i audio, a DIAGNOSTYKA także aktywność głosów, poziomy i zegar.
 
-## Wyjścia w FL Studio
+Prawoklik regulatora przywraca wartość domyślną, Ctrl+prawoklik obsługuje MIDI Learn. PANIC zatrzymuje generowanie i głosy. PRO nadal ma własną nazwę i identyfikator `pl.jerzy.bassambient.pro` / `Jbpr`; może współistnieć z oryginalną wtyczką bez PRO. Aktualizacja 0.7 zachowuje identyfikator PRO, istniejące identyfikatory parametrów i ich kolejność. Starsze zapisy zachowują dawną ścieżkę MIDI.
 
-Włącz dodatkowe wyjścia w wrapperze wtyczki i przypisz je do insertów miksera. SPLIT OUT usuwa podłączone stem-y i powroty z MAIN; niepodłączone pozostają w MAIN.
-
-Kolejność 11 wyjść stereo: MAIN, BASS, PAD, ARP, KICK, SNARE, HI-HAT, AUX, DELAY RETURN, REVERB RETURN, KRELL. Nowy Krell jest na końcu, więc numery wcześniejszych wyjść nie zmieniły się. Osobne wyjścia omijają końcowy limiter MAIN.
-
-Diody IN, ACT, OUT i CLP oznaczają odpowiednio sterowanie wejściowe, aktywne głosy, audio na wyjściu i poziom co najmniej 0 dBFS. Prawoklik resetuje regulator; Ctrl+prawoklik pozwala przypisać MIDI.
-
-### Przeciąganie MIDI do FL Studio
-
-Na dole Composera wybierz **SCENE** (wybrana scena) lub **WHOLE SONG** (cały song z powtórzeniami). Drugi wybór: **SELECTED TRACK** eksportuje zaznaczony instrument do jednego Piano Roll; **ALL TRACKS** tworzy wielościeżkowy plik MIDI do importu w FL Studio. Następnie przeciągnij **DRAG MIDI TO FL**. Eksport songu korzysta z listy SONG, więc najpierw dodaj do niej sceny. Osobne przyciski EXPORT SCENE / EXPORT SONG zapisują wszystkie ścieżki do pliku MIDI.
-
-### Układ na mniejszym ekranie
-
-Okno startuje w rozmiarze dopasowanym do obszaru roboczego ekranu, z rezerwą na ramkę FL Studio. W DRUMS kliknij KICK / SNARE / HI-HAT / AUX po lewej stronie siatki: parametry wybranego instrumentu są po prawej. Ustawienia wspólne są pod siatką. Panele regulatorów mają mniejszą wysokość; dłuższe strony nadal można przewijać.
-
-### Rendering audio WAV (EXE i VST3)
-
-Na dole strony COMPOSER wybierz zakres i kliknij **RENDER WAV**:
-
-- **WAV: SCENE** — wybrana scena, wszystkie aktywne klipy.
-- **WAV: SCENE INSTRUMENT** — zaznaczony instrument z wybranej sceny.
-- **WAV: WHOLE SONG** — cała lista SONG z powtórzeniami i wariantami EVOLVE.
-- **STEMS: SCENE / WHOLE SONG** — folder z ośmioma ścieżkami instrumentów oraz osobnymi DELAY-RETURN i REVERB-RETURN. Wszystkie pliki zaczynają się w tym samym miejscu i mają taką samą długość. Nazwy są numerowane (01-BASS.wav … 07-AUX.wav … 10-REVERB-RETURN.wav), co zapewnia zgodność z nazwami plików Windows.
-
-Wybierz 44,1 / 48 / 96 kHz, WAV 24-bit PCM lub 32-bit float oraz dodatkowy ogon 0 / 5 / 10 / 20 / 45 sekund. TAIL 0 ucina plik na końcu sceny/songu. Dłuższy ogon zachowuje wybrzmiewanie obwiedni i efektów do wybranego limitu; nie jest to automatyczne wykrywanie ciszy.
-
-**WITH FX** włącza efekty na potrzeby renderu z ustawionymi ilościami i wysyłkami; **DRY / NO FX** pomija racki i efekty wysyłkowe, zachowując syntezę, jej drive oraz ustawienia gain/pan miksera. Zwykły stereo WAV zawiera także MASTER FX i limiter. Stems są po efektach instrumentów i mikserze, przed MASTER FX, filtrem DC oraz limiterem sumy. Wspólne wysyłki są w osobnych plikach, więc nie należy dodawać ich ponownie do każdego instrumentu. Suma stems po dodatkowym przetwarzaniu mastera może różnić się od gotowego stereo WAV.
-
-Rendering używa kopii bieżących ustawień i aranżacji. Tempo pochodzi z INTERNAL BPM lub aktualnego tempa hosta/zegara. Nie wymaga uruchomienia transportu ani urządzenia audio. Tak jak LAUNCH SCENE, uruchamia moduły zgodnie z klipami scen; respektuje gain, mute, solo i progi intensywności. Eksport jednego instrumentu pomija SOLO pozostałych instrumentów. SCENE MIX decyduje o odczycie miksera sceny. Zmiany wykonane po otwarciu okna zapisu nie zmieniają już tego renderu.
-
-Postęp widać w osobnym oknie; **Cancel** anuluje operację. Dotychczasowy plik jest zastępowany dopiero po ukończeniu nowego WAV. Stems trafiają do nowego folderu. Przy 24-bit PCM zbyt głośny sygnał może zostać obcięty — do dalszego miksowania wybierz 32-bit float. Maksymalny rozmiar pojedynczego WAV to 4 GB; dłuższe aranżacje eksportuj częściami.
-
-Po ukończeniu stereo WAV aktywuje się **DRAG WAV TO FL**. Przeciągnij ten przycisk na **Playlistę** FL Studio: FL utworzy Audio Clip. Plik pozostaje w wybranej lokalizacji — nie przenoś go ani nie usuwaj, bo projekt FL odwołuje się do niego. Przycisk używa ostatniego udanego renderu stereo w tym oknie; po eksporcie stems przeciągaj numerowane pliki WAV z folderu. Automatyczne wstawianie Audio Clip bez przeciągnięcia nie jest dostępne przez standardowe API VST3.
-
-### LINK ROOT + SCALE i nuty z Piano Roll
-
-Przy COMPOSER OFF zmiana root z MIDI aktualizuje wspólną harmonię, zachowując trzymane nuty. Przebudowa danych Composera w tle nie może ucinać generatorów. Długa nuta root steruje kolejnymi powtórzeniami frazy Rock / Metal / Punk / Blues aż do Note Off (przy MIDI PARTS OFF i DIRECT MIDI OFF).
+Paczka Windows powstaje w MSVC na GitHub; BUILD.txt wskazuje commit, SHA256SUMS.txt sumy plików. Test hosta i renderingu nie zastępuje odsłuchu konkretnego projektu i konfiguracji FL Studio.

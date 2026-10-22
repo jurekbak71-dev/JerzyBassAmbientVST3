@@ -58,9 +58,9 @@ public:
         auto& v=*selected;v.note=note;v.pan=pan;v.velocity=velocity;v.age=0;v.offPPQ=offPPQ;v.id=id;v.env.on();lastNote=note;
     }
     void noteOff(uint32_t id) {for(auto& v:voices)if(v.id==id)v.env.off();}
-    Stereo next(const Parameters& p,double ppq,int root,const int* notes,int count,double bend,bool generate=true) {
+    Stereo next(const Parameters& p,double ppq,int root,const int* notes,int count,double bend,bool generate=true,int transpose=0) {
         const double period=divisionBeats(p.arpDivision);const auto step=swungStep(ppq,period,p.arpSwing);
-        if(generate&&root>=0&&step!=previous) {const auto e=makeArpEvent(p,step,notes,count,root);previous=step;if(e.note>=0)trigger(e.note,e.velocity,e.pan,ppq+period*e.gate,0);}
+        if(generate&&root>=0&&step!=previous) {const auto e=makeArpEvent(p,step,notes,count,root);previous=step;if(e.note>=0)trigger(clamp(e.note+transpose,0,127),e.velocity,e.pan,ppq+period*e.gate,0);}
         Stereo out{};
         for(auto& v:voices) if(v.env.active()) {
             if(root<0||ppq>=v.offPPQ)v.env.off();

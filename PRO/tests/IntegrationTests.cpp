@@ -11,6 +11,7 @@ public:
         PositionInfo p;p.setPpqPosition(ppq);p.setBpm(bpm);p.setIsPlaying(playing);p.setTimeSignature(TimeSignature{7,8});return p;
     }
 };
+#include "GuiV2Checks.h"
 int main() {
     try {
         juce::ScopedJuceInitialiser_GUI init;
@@ -49,16 +50,10 @@ int main() {
         require(std::abs(racks.padRack.delayMix-racks.delayMix)<1e-6&&racks.masterFX==0,"legacy shared FX migration with dry master");
         processor.applyPreset(0);
         std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
-        auto tab=[&](const juce::String& name) {
-            for(int i=0;i<editor->getNumChildComponents();++i)
-                if(auto* button=dynamic_cast<juce::TextButton*>(editor->getChildComponent(i)))
-                    if(button->getButtonText()==name&&button->onClick) {button->onClick();return;}
-            throw std::runtime_error("main page missing");
-        };
-        juce::ComboBox* selector=nullptr;
-        for(int i=0;i<editor->getNumChildComponents();++i)
-            if(editor->getChildComponent(i)->getComponentID()=="rackSelector") selector=dynamic_cast<juce::ComboBox*>(editor->getChildComponent(i));
-        require(selector!=nullptr,"FX rack selector missing");require(selector->getNumItems()==6,"six instrument/master FX racks");
+        std::function<juce::Component*(juce::Component&,const juce::String&)> find=[&](juce::Component& root,const juce::String& id)->juce::Component*{if(root.getComponentID()==id)return &root;for(auto* child:root.getChildren())if(auto* result=find(*child,id))return result;return nullptr;};
+        auto press=[&](const juce::String& id){auto* button=dynamic_cast<juce::Button*>(find(*editor,id));require(button&&bool(button->onClick),"GUI navigation button exists");button->onClick();};
+        auto tab=[&](const juce::String& name){if(name=="COMPOSER")press("nav-1");else if(name=="MIXER")press("nav-2");else if(name=="GENERATE"){auto* source=dynamic_cast<juce::ComboBox*>(find(*editor,"performance-source"));require(source!=nullptr,"performance source");source->setSelectedId(2,juce::sendNotificationSync);}else if(name=="FX")press("section-2");else{press("nav-0");const int module=name=="BASS"?0:name=="AMBIENT"?1:name=="ARPEGGIO"?2:name=="DRUMS"?3:4;press("module-"+juce::String(module));press("section-0");}};
+        auto rack=[&](int r){if(r==3){tab("MIXER");for(auto* c:editor->getChildren())juce::ignoreUnused(c);std::function<juce::TextButton*(juce::Component&)> locate=[&](juce::Component& c)->juce::TextButton*{if(auto* b=dynamic_cast<juce::TextButton*>(&c))if(b->getButtonText()=="MASTER FX")return b;for(auto* child:c.getChildren())if(auto* b=locate(*child))return b;return nullptr;};auto* b=locate(*editor);require(b!=nullptr,"master FX navigation");b->onClick();}else{const char* names[]{"BASS","AMBIENT","BASS","ARPEGGIO","DRUMS","KRELL"};tab(names[r-1]);press("section-2");}};
         auto snapshot=[&](const juce::String& suffix) {
             auto image=editor->createComponentSnapshot(editor->getLocalBounds(),true,1);
             require(image.isValid()&&image.getWidth()==editor->getWidth()&&image.getHeight()==editor->getHeight(),"resizable GUI snapshot");
@@ -66,28 +61,25 @@ int main() {
             require(stream!=nullptr,"GUI snapshot output");require(stream->setPosition(0)&&stream->truncate().wasOk(),"fresh GUI snapshot output");juce::PNGImageFormat png;
             require(png.writeImageToStream(image,*stream),"GUI PNG encoding");
         };
-        const std::array<std::pair<int,int>,3> sizes{{{1000,680},{1200,820},{1600,1100}}};
+        const std::array<std::pair<int,int>,3> sizes{{{1000,650},{1200,720},{1600,1000}}};
         for(const auto& size:sizes) {
             editor->setSize(size.first,size.second);
             for(const auto& name:juce::StringArray{"BASS","AMBIENT","ARPEGGIO","DRUMS","FX","GENERATE","COMPOSER","KRELL"}) {
-                tab(name);require(selector->isVisible()==(name=="FX"),"rack selector visibility");
+                tab(name);
                 if(name!="FX") snapshot(name+"-"+juce::String(size.first));
-                else for(int rack=1;rack<=6;++rack) {
-                    selector->setSelectedId(rack,juce::sendNotificationSync);
-                    snapshot("FX-"+juce::String(rack)+"-"+juce::String(size.first));
+                else for(int r=1;r<=6;++r) {
+                    rack(r);
+                    snapshot("FX-"+juce::String(r)+"-"+juce::String(size.first));
                 }
             }
         }
         // Reordering one rack through its actual GUI leaves the others untouched.
-        tab("FX");selector->setSelectedId(2,juce::sendNotificationSync);
+        rack(2);
         juce::Viewport* viewport=nullptr;
-        for(int i=0;i<editor->getNumChildComponents();++i)
-            if(auto* v=dynamic_cast<juce::Viewport*>(editor->getChildComponent(i))) viewport=v;
+        std::function<void(juce::Component&)> locateViewport=[&](juce::Component& c){if(auto* v=dynamic_cast<juce::Viewport*>(&c))viewport=v;else for(auto* child:c.getChildren())locateViewport(*child);};locateViewport(*editor);
         require(viewport!=nullptr,"page viewport");auto* page=viewport->getViewedComponent();
-        bool moved=false;
-        for(int i=0;i<page->getNumChildComponents();++i)
-            if(auto* button=dynamic_cast<juce::TextButton*>(page->getChildComponent(i)))
-                if(button->getButtonText()==">"&&button->isEnabled()) {button->onClick();moved=true;break;}
+        auto* fxTarget=dynamic_cast<juce::DragAndDropTarget*>(page);require(fxTarget!=nullptr,"FX chain supports drag reorder");
+        juce::DragAndDropTarget::SourceDetails drop("fx-slot:3:0",page,juce::Point<int>(page->getWidth()/6+10,12));fxTarget->itemDropped(drop);bool moved=true;
         racks=processor.readParameters();require(moved&&racks.padRack.order[0]==1&&racks.padRack.order[1]==0&&racks.order[0]==0&&racks.masterRack.order[0]==0,"GUI independent rack reorder");
         bool delaySelected=false;
         for(int i=0;i<page->getNumChildComponents();++i)
@@ -109,7 +101,7 @@ int main() {
         set("arp",1);set("drums",1);set("arpGateRandom",.73f);set("drumLength",64);set("drum3_step63",127);
         processor.getStateInformation(state);set("drum3_step63",0);set("arp",0);processor.setStateInformation(state.getData(),int(state.getSize()));
         require(processor.readParameters().arp&&processor.readParameters().drumGrid[3][63]==127,"PRO state roundtrip");
-        processor.applyPreset(0);set("pad",0);set("arp",0);set("drums",0);set("autoPlay",0);
+        processor.applyPreset(0);set("modularMidi",0);set("performanceSource",0);set("pad",0);set("arp",0);set("drums",0);set("autoPlay",0);
         midi.clear();midi.addEvent(juce::MidiMessage::noteOn(1,36,1.0f),0);
         midi.addEvent(juce::MidiMessage::controllerEvent(1,20,0),64);processor.processBlock(audio,midi);
         for(int k=64;k<128;++k)require(audio.getSample(0,k)==0&&audio.getSample(1,k)==0,"MIDI CC20 sample-accurate module off");
@@ -197,7 +189,7 @@ int main() {
         auto stored=jerzy::composer::fromTree(jerzy::composer::toTree([&]{auto d=processor.composerDocument();d.scenes[0].patch=newRacks;return d;}()));require(std::abs(stored.scenes[0].patch.krellRack.delayMix-.49)<.001&&std::abs(stored.scenes[0].patch.arpRack.delayMix-.27)<.001&&stored.scenes[0].patch.drumsRack.order[0]==4,"new FX racks survive Composer project round trip");
         set("model",3);tab("BASS");editor->resized();snapshot("BASS-GUITAR");tab("KRELL");snapshot("KRELL-final");require(processor.readParameters().model==3,"Bass Guitar model selected");
         processor.applyPreset(9);require(processor.readParameters().model==3,"Bass Guitar factory preset");for(int kind=10;kind<=13;++kind){processor.applyPreset(kind);require(processor.readParameters().model==3&&processor.readParameters().style==kind,"Rock Metal Punk Blues presets select guitar and style");}processor.applyPreset(14);require(processor.readParameters().krell&&!processor.readParameters().bass&&!processor.readParameters().pad,"independent Krell audition preset");
-        tab("COMPOSER");viewport->setViewPosition(0,1200);snapshot("AUDIO-EXPORT");
+        tab("COMPOSER");snapshot("AUDIO-EXPORT");
         // One held root must drive repeated bass phrases, with shared harmony enabled.
         {BassAmbientProcessor rootProcessor;Host rootHost;rootHost.bpm=240;rootProcessor.setPlayHead(&rootHost);
             for(int style=10;style<=13;++style){
@@ -212,7 +204,32 @@ int main() {
                 rootProcessor.releaseResources();
             }
         }
+        checkGuiV2Routing();
         checkAudioRendering();
+        // Approved GUI: navigation is observational; local editing stays local.
+        auto* sourceBox=dynamic_cast<juce::ComboBox*>(find(*editor,"performance-source"));
+        sourceBox->setSelectedId(1,juce::sendNotificationSync);sourceBox->onChange();set("bass",1);set("pad",1);set("autoPlay",0);set("fxEnabled",0);set("model",3);
+        midi.clear();midi.addEvent(juce::MidiMessage::noteOn(1,36,1.0f),0);processor.processBlock(audio,midi);
+        require(processor.rootDisplay==36,"GUI navigation setup has a held MIDI root");const auto navigationBefore=processor.state.copyState();
+        for(int module=0;module<5;++module){press("nav-0");press("module-"+juce::String(module));for(int section=0;section<3;++section)press("section-"+juce::String(section));}
+        require(navigationBefore.isEquivalentTo(processor.state.copyState()),"GUI navigation does not change any audio parameter");processor.processBlock(audio,midi);require(processor.rootDisplay==36,"GUI navigation does not release held root");
+        tab("AMBIENT");auto* local=dynamic_cast<juce::ComboBox*>(find(*editor,"instrument-preset"));require(local!=nullptr,"local presets exist");const float bassCutoff=processor.state.getRawParameterValue("cutoff")->load(),arpCutoff=processor.state.getRawParameterValue("arpCutoff")->load();local->setSelectedId(2,juce::sendNotificationSync);require(processor.state.getRawParameterValue("cutoff")->load()==bassCutoff&&processor.state.getRawParameterValue("arpCutoff")->load()==arpCutoff,"PAD preset does not overwrite Bass or Arp sound");
+        press("section-1");const auto beforeVariant=processor.state.copyState();press("instrument-variant");press("instrument-undo");require(beforeVariant.isEquivalentTo(processor.state.copyState()),"local variant undo restores exact parameter state");
+        sourceBox->setSelectedId(2,juce::sendNotificationSync);require(!processor.readParameters().autoPlay,"selecting JAM waits for PLAY");const size_t oldScenes=processor.composerDocument().scenes.size();press("jam-capture");require(processor.composerDocument().scenes.size()==oldScenes+1,"JAM snapshot creates a generated scene");
+        sourceBox->setSelectedId(3,juce::sendNotificationSync);require(processor.readParameters().composerEnabled&&!processor.readParameters().modularMidi,"Arranger source selects composer routing");
+        auto* composerUndo=dynamic_cast<juce::Button*>(find(*editor,"composer-undo"));require(composerUndo!=nullptr,"Composer undo accessible");
+        std::function<juce::TextButton*(juce::Component&,const juce::String&)> textButton=[&](juce::Component& c,const juce::String& text)->juce::TextButton*{if(auto* b=dynamic_cast<juce::TextButton*>(&c))if(b->getButtonText()==text)return b;for(auto* child:c.getChildren())if(auto* found=textButton(*child,text))return found;return nullptr;};
+        auto* newScene=textButton(*editor,"NOWA");require(newScene!=nullptr,"new scene button");auto sceneCount=processor.composerDocument().scenes.size();newScene->onClick();require(processor.composerDocument().scenes.size()==sceneCount+1,"Composer new scene");composerUndo->onClick();require(processor.composerDocument().scenes.size()==sceneCount,"Composer undo restores scene document");
+        // Capture the actual compiled JUCE editor and real auxiliary windows.
+        sourceBox->setSelectedId(1,juce::sendNotificationSync);editor->setSize(1200,720);set("bass",1);set("pad",1);set("arp",1);set("drums",1);set("krell",1);set("fxEnabled",1);
+        tab("BASS");snapshot("01-Bass-Sound");press("section-1");snapshot("02-Bass-Generator");
+        tab("AMBIENT");snapshot("03-Ambient");tab("ARPEGGIO");snapshot("04-Arp-Sound");press("section-1");snapshot("05-Arp-Generator");tab("DRUMS");snapshot("06-Drums");tab("KRELL");snapshot("07-Krell");
+        sourceBox->setSelectedId(3,juce::sendNotificationSync);snapshot("08-Arranger-Song");press("composer-edit-clip");snapshot("09-Arranger-Clip");
+        auto popup=[&](const juce::String& button,const juce::String& suffix){press(button);auto& desktop=juce::Desktop::getInstance();juce::DialogWindow* window=nullptr;for(int i=0;i<desktop.getNumComponents();++i)if(auto* candidate=dynamic_cast<juce::DialogWindow*>(desktop.getComponent(i)))if(candidate->isVisible())window=candidate;require(window!=nullptr,"real settings/export window shown");auto image=window->createComponentSnapshot(window->getLocalBounds(),true,1);auto out=juce::File::getCurrentWorkingDirectory().getChildFile("gui-"+suffix+".png").createOutputStream();require(out&&out->setPosition(0)&&out->truncate().wasOk(),"popup PNG output");juce::PNGImageFormat png;require(png.writeImageToStream(image,*out),"popup PNG encoding");window->closeButtonPressed();};
+        tab("MIXER");snapshot("10-Mixer");popup("global-routing","11-Routing");popup("global-returns","12-Returns");popup("global-settings","13-Settings");popup("global-diagnostics","14-Diagnostics");
+        press("global-master-fx");snapshot("15-Master-FX");tab("ARPEGGIO");press("section-2");snapshot("16-Arp-FX");tab("BASS");press("instrument-advanced");snapshot("17-Advanced");press("instrument-advanced");sourceBox->setSelectedId(2,juce::sendNotificationSync);snapshot("18-Jam");popup("global-export","19-Audio-Export");
+        press("global-export");auto& desktop=juce::Desktop::getInstance();for(int i=0;i<desktop.getNumComponents();++i)if(auto* window=dynamic_cast<juce::DialogWindow*>(desktop.getComponent(i)))if(window->isVisible()){auto* format=dynamic_cast<juce::ComboBox*>(find(*window,"export-format"));require(format!=nullptr,"common export format");format->setSelectedId(2,juce::sendNotificationSync);window->closeButtonPressed();}popup("global-export","20-Midi-Export");
+        editor->setSize(900,540);tab("DRUMS");snapshot("21-Compact-900x540");
         std::cout<<"PASS MIDI, three-rack routing state, legacy migration, GUI attachments, reorder PRO MIDI mappings, 64-step state, right-click and 24 page/rack snapshots\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<"\n";return 1; }
