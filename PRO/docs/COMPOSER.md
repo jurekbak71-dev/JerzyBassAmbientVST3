@@ -10,4 +10,6 @@ MIDI: format 1, 960 PPQ, tempo, metrum, nazwy partii i markery. Kanały 1 Bass, 
 
 Edycja przelicza niezmienny plan w wątku pomocniczym. Przyjęcie planu synchronizuje odtwarzanie. Zmiana uruchamianej sceny jest kwantyzowana; nie jest to wielośladowe nagrywanie live. Rendering WAV korzysta z prywatnego silnika i kopii dokumentu, nie porusza transportem sesji.
 
-Źródła: gałąź `pro/composer-arranger`. Natywne Windows EXE/VST3 oraz instrukcje: `windows/pro-0.7/delivery`. Oryginalny projekt bez PRO pozostaje oddzielny.
+Źródła: gałąź `pro/composer-arranger`. Natywne Windows EXE/VST3 oraz instrukcje: `windows/pro-0.8/delivery`. Oryginalny projekt bez PRO pozostaje oddzielny.
+
+LIVE używa tych samych scen, z wyborem następnej na granicy taktu. Patrz [LIVE_PL.md](LIVE_PL.md).

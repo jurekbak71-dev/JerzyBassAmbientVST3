@@ -122,14 +122,14 @@ jerzy::Parameters BassAmbientProcessor::readParameters() const {
 }
 
 void BassAmbientProcessor::prepareToPlay(double sampleRate,int) {
-    stopResourceWorker();
+    stopResourceWorker();stopLiveRecording();liveAudioReady=false;liveAudioRate=sampleRate;
     delete activeComposer;activeComposer=nullptr;delete pendingComposer.exchange(nullptr);delete retiredComposer.exchange(nullptr);
     activeComposer=new jerzy::composer::Compiled(jerzy::composer::compile(composerDocument()));compiledRevision=composerRevision.load();
     playback=nullptr;wasComposerPlaying=false;previousComposerBeat=-1;lastComposerPPQ=-1;sectionIndex=-1;lastResourceSection=-2;tailUntil.fill(0);previousTracks.fill(false);
     sr=sampleRate;midiClock.reset(sr);clockSamples=0;previousClock=-1;instrument.prepare(sr);current=readParameters();localPPQ=0;resetRequested=false;
     instrument.configureResources(current);instrument.serviceResources();instrument.configureResources(current);
     lastControlSnapshot=readParameters();
-    stopWorker=false;resourceWorker=std::thread([this] {while(!stopWorker.load()) {instrument.serviceResources();serviceComposer();std::this_thread::sleep_for(std::chrono::milliseconds(5));}instrument.serviceResources();});
+    liveAudioReady=true;stopWorker=false;resourceWorker=std::thread([this] {while(!stopWorker.load()) {instrument.serviceResources();serviceComposer();serviceLive();std::this_thread::sleep_for(std::chrono::milliseconds(5));}instrument.serviceResources();});
 }
 bool BassAmbientProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
     if(!buses.inputBuses.isEmpty()||buses.outputBuses.isEmpty()||buses.outputBuses.size()>11||buses.getMainOutputChannelSet()!=juce::AudioChannelSet::stereo())return false;
@@ -274,16 +274,18 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
         if(!advancing){playbackControls.composerPlaying=false;playbackControls.autoPlay=false;current.autoPlay=false;}
         if(controls.composerEnabled) {target=composerSample(playbackControls,position,tempo,playing,num,den);current=target;if(sample==0)instrument.configureResources(target);}
         auto output=instrument.next(current,position,num,den,controls.composerEnabled||(controls.midiPlayback&&!controls.modularMidi),splitMask);
+        const double sceneGain=controls.composerEnabled?sceneTransitionGain:1.;output=output*sceneGain;
         const auto& stems=instrument.stemOutputs();
         const auto& returns=instrument.returnOutputs();
         const auto voices=instrument.activeTracks();
         for(int t=0;t<10;++t){const auto value=t<8?stems[size_t(t)]:returns[size_t(t-8)];peaks[size_t(t)]=std::max(peaks[size_t(t)],float(std::max(std::abs(value.l),std::abs(value.r))));
             if(t<8)active[size_t(t)]|=voices[size_t(t)];
-            if(stemChannels[size_t(t)]>=0){audio.setSample(stemChannels[size_t(t)],sample,float(value.l));audio.setSample(stemChannels[size_t(t)]+1,sample,float(value.r));}}
+            if(stemChannels[size_t(t)]>=0){audio.setSample(stemChannels[size_t(t)],sample,float(value.l*sceneGain));audio.setSample(stemChannels[size_t(t)]+1,sample,float(value.r*sceneGain));}}
         if(controls.clockSource==2&&midiClock.running&&midiClock.valid(clockSamples+sample))midiClock.beat+=increment;
         audio.setSample(0,sample,float(output.l));audio.setSample(1,sample,float(output.r));
         maximum=std::max(maximum,float(std::max(std::abs(output.l),std::abs(output.r))));
     }
+    liveRecorder.push(audio);
     localPPQ=ppq+audio.getNumSamples()*increment;clockSamples+=audio.getNumSamples();midi.clear();
     tempoDisplay=tempo;beatDisplay=controls.clockSource==2?midiClock.beat:localPPQ;
     if(controls.clockSource==2)clockStatus=midiClock.valid(clockSamples)?1:midiClock.locked?3:2;
@@ -356,9 +358,9 @@ void BassAmbientProcessor::applyPreset(int preset) {
     if(preset==14){set("bass",0);set("pad",0);set("arp",0);set("drums",0);set("krell",1);set("krellEngine",0);set("krellAttack",.4f);set("krellRelease",2);if(!modern)set("harmonyLink",1);}
     resetRequested=true;
 }
-BassAmbientProcessor::~BassAmbientProcessor() {stopResourceWorker();delete activeComposer;delete pendingComposer.load();delete retiredComposer.load();}
+BassAmbientProcessor::~BassAmbientProcessor() {stopResourceWorker();stopLiveRecording();delete activeComposer;delete pendingComposer.load();delete retiredComposer.load();}
 void BassAmbientProcessor::stopResourceWorker() {stopWorker=true;if(resourceWorker.joinable())resourceWorker.join();}
-void BassAmbientProcessor::releaseResources() {stopResourceWorker();}
+void BassAmbientProcessor::releaseResources() {liveAudioReady=false;stopResourceWorker();stopLiveRecording();}
 void BassAmbientProcessor::setParameterValue(const juce::String& id,float value) {
     if(auto* p=state.getParameter(id)) {p->beginChangeGesture();p->setValueNotifyingHost(p->convertTo0to1(value));p->endChangeGesture();}
 }
@@ -370,6 +372,7 @@ void BassAmbientProcessor::handleMappedController(int cc,int value,jerzy::Parame
     const int learned=learnParameter.exchange(-1);
     if(learned>=0) {for(auto& mapping:ccMap)if(mapping.load()==learned)mapping=-1;ccMap[size_t(cc)]=learned;learnCC=cc;}
     const int index=ccMap[size_t(cc)].load();
+    if(index<0)queueLiveController(cc,value);
     if(index>=0&&index<int(hostParameters.size())) {auto* parameter=hostParameters[size_t(index)];parameter->setValueNotifyingHost(float(value)/127);
         if(target.performanceSource>0){if(parameter->paramID=="autoPlay"&&value>=64){setParameterValue("performanceSource",2);setParameterValue("modularMidi",0);setParameterValue("composerEnabled",0);}else if(parameter->paramID=="composerEnabled"){setParameterValue("performanceSource",value>=64?3:1);setParameterValue("modularMidi",value>=64?0:1);if(value>=64)setParameterValue("autoPlay",0);}}
         target=readParameters();}
@@ -379,7 +382,7 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new BassAmbien
 
 void BassAmbientProcessor::transport(bool run){
     setParameterValue("transportRun",run?1:0);
-    if(!run){setParameterValue("composerPlaying",0);setParameterValue("autoPlay",0);requestPanic();}
+    if(!run){liveQueuedScene=-1;liveRetrigger=false;setParameterValue("composerPlaying",0);setParameterValue("autoPlay",0);requestPanic();}
     else if(readParameters().composerEnabled)launchComposer(readParameters().composerScene-1,readParameters().composerSongMode);
     else if(readParameters().performanceSource!=1&&!readParameters().modularMidi)setParameterValue("autoPlay",1);
 }

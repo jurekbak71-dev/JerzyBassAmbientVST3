@@ -5,6 +5,7 @@
 #include <thread>
 #include "MidiClock.h"
 #include "AudioRender.h"
+#include "LiveRecorder.h"
 
 struct ParameterSpec {
     juce::String id,label; int group=0; int kind=0;
@@ -73,7 +74,28 @@ public:
     std::atomic<double> composerBeatDisplay{0};
     std::atomic<uint64_t> composerRevision{1};
 
+    LiveRecorder liveRecorder;
+    std::atomic<bool> liveAudioReady{false};std::atomic<double> liveAudioRate{48000};
+    void armLiveRecording(const juce::File&);
+    juce::Result startLiveRecording();
+    void stopLiveRecording();
+    juce::String liveRecordingPath() const;
+    juce::String liveMessage() const;
+    void captureLiveSnapshot();
+    bool returnLiveSnapshot();
+    std::atomic<bool> liveSnapshotReady{false};
+    void launchLiveScene(int scene);
+    std::atomic<int> liveQueuedScene{-1};std::atomic<bool> liveRetrigger{false};
+    void serviceLive();
 private:
+    mutable juce::CriticalSection liveLock;
+    juce::File liveFile;
+    juce::String liveStatus;
+    std::vector<std::pair<juce::String,float>> liveSnapshot;
+    juce::AbstractFifo liveActionFifo{64};
+    std::array<int,64> liveActions{};
+    std::array<bool,128> liveCCDown{};
+    void queueLiveController(int,int);
     mutable juce::CriticalSection composerLock;
     jerzy::composer::Document composerData=jerzy::composer::factoryDocument();
     juce::String composerFailure;
@@ -83,6 +105,7 @@ private:
     const jerzy::composer::Timeline* playback=nullptr;
     size_t eventCursor=0;int sectionIndex=-1,playingScene=-1,lastResourceSection=-2;
     double composerOrigin=0,previousComposerBeat=-1,lastComposerPPQ=-1;
+    double sceneTransitionGain=1;int sceneFadeIn=0;
     int lastPerformanceSource=-1;
     bool wasComposerPlaying=false,wasSongMode=false;
     jerzy::Parameters sectionPatch,lastControlSnapshot;

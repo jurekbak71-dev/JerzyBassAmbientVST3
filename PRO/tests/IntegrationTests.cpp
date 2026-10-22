@@ -12,6 +12,7 @@ public:
     }
 };
 #include "GuiV2Checks.h"
+#include "LiveChecks.h"
 int main() {
     try {
         juce::ScopedJuceInitialiser_GUI init;
@@ -204,7 +205,7 @@ int main() {
                 rootProcessor.releaseResources();
             }
         }
-        checkGuiV2Routing();
+        checkGuiV2Routing();checkLivePerformance();
         checkAudioRendering();
         // Approved GUI: navigation is observational; local editing stays local.
         auto* sourceBox=dynamic_cast<juce::ComboBox*>(find(*editor,"performance-source"));
@@ -229,7 +230,7 @@ int main() {
         tab("MIXER");snapshot("10-Mixer");popup("global-routing","11-Routing");popup("global-returns","12-Returns");popup("global-settings","13-Settings");popup("global-diagnostics","14-Diagnostics");
         press("global-master-fx");snapshot("15-Master-FX");tab("ARPEGGIO");press("section-2");snapshot("16-Arp-FX");tab("BASS");press("instrument-advanced");snapshot("17-Advanced");press("instrument-advanced");sourceBox->setSelectedId(2,juce::sendNotificationSync);snapshot("18-Jam");popup("global-export","19-Audio-Export");
         press("global-export");auto& desktop=juce::Desktop::getInstance();for(int i=0;i<desktop.getNumComponents();++i)if(auto* window=dynamic_cast<juce::DialogWindow*>(desktop.getComponent(i)))if(window->isVisible()){auto* format=dynamic_cast<juce::ComboBox*>(find(*window,"export-format"));require(format!=nullptr,"common export format");format->setSelectedId(2,juce::sendNotificationSync);window->closeButtonPressed();}popup("global-export","20-Midi-Export");
-        editor->setSize(900,540);tab("DRUMS");snapshot("21-Compact-900x540");
+        editor->setSize(900,540);tab("DRUMS");snapshot("21-Compact-900x540");editor->setSize(1200,720);press("nav-3");auto* liveGain=dynamic_cast<juce::Slider*>(find(*editor,"live-gain-0"));require(liveGain!=nullptr,"LIVE fader exists");liveGain->setValue(.42,juce::sendNotificationSync);require(std::abs(processor.readParameters().mix0Gain-.42)<.00001,"LIVE fader controls shared mixer gain");liveGain->setValue(1,juce::sendNotificationSync);snapshot("22-Live-Performance");require(find(*editor,"live-snapshot")&&find(*editor,"live-record"),"LIVE controls accessible");
         std::cout<<"PASS MIDI, three-rack routing state, legacy migration, GUI attachments, reorder PRO MIDI mappings, 64-step state, right-click and 24 page/rack snapshots\n";
         return 0;
     } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<"\n";return 1; }

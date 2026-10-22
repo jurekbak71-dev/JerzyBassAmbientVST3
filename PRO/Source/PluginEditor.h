@@ -3,6 +3,7 @@
 #include "JerzyVSTGuiKit.h"
 #include "ComposerView.h"
 #include "PerformanceView.h"
+#include "LiveView.h"
 class BassAmbientEditor final : public juce::AudioProcessorEditor,private juce::Timer {
 public:
     explicit BassAmbientEditor(BassAmbientProcessor&);
@@ -15,8 +16,9 @@ private:
     std::array<std::unique_ptr<Page>,12> pages;
     std::array<juce::TextButton,5> tabs;
     std::array<juce::ToggleButton,5> modulePower;
-    std::array<juce::TextButton,3> mainTabs,sectionTabs;
+    std::array<juce::TextButton,4> mainTabs;std::array<juce::TextButton,3> sectionTabs;
     std::array<std::unique_ptr<SignalLeds>,5> moduleLeds;
+    std::unique_ptr<LiveView> liveView;
     std::unique_ptr<MixerView> mixerView;std::unique_ptr<ComposerView> composerView;
     std::unique_ptr<TransportView> transportView;std::unique_ptr<HarmonyView> harmonyView;
     juce::Viewport viewport;juce::ComboBox presets,source,performance,localPreset;

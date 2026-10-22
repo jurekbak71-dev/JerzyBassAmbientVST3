@@ -39,6 +39,7 @@ jobs:
           Copy-Item 'build-pro/JerzyBassAmbientPRO_artefacts/Release/Standalone/Jerzy Bass Ambient PRO.exe' $dest
           Compress-Archive -Path 'build-pro/JerzyBassAmbientPRO_artefacts/Release/VST3/Jerzy Bass Ambient PRO.vst3' -DestinationPath "$dest/Jerzy-Bass-Ambient-PRO-VST3-Windows.zip"
           Copy-Item 'PRO/docs/START_PL.md' "$dest/START-PL.md"
+          Copy-Item 'PRO/docs/LIVE_PL.md' "$dest/LIVE-PL.md"
           Copy-Item 'PRO/docs/PERFORMANCE.md' "$dest/PERFORMANCE.md"
           Copy-Item 'PRO/docs/VISUAL_LANGUAGE.md' "$dest/VISUAL_LANGUAGE.md"
           Copy-Item 'PRO/docs/COMPOSER.md' "$dest/COMPOSER.md"
@@ -47,14 +48,14 @@ jobs:
           $preview = Join-Path $env:RUNNER_TEMP 'pro-gui-preview'
           New-Item -ItemType Directory -Force $preview | Out-Null
           $screens = Get-ChildItem 'build-pro' -Filter 'gui-*.png' | Where-Object { $_.Name -match '^gui-\d{2}-' } | Sort-Object Name
-          if ($screens.Count -ne 21) { throw "Expected 21 compiled GUI screenshots, got $($screens.Count)" }
+          if ($screens.Count -ne 22) { throw "Expected 22 compiled GUI screenshots, got $($screens.Count)" }
           $screens | Copy-Item -Destination $preview
-          $html = '<!doctype html><html lang="pl"><meta charset="utf-8"><title>PRO 0.7 — GUI</title><style>body{background:#111923;color:#eee;font:16px sans-serif;max-width:1240px;margin:auto;padding:24px}img{max-width:100%;border:1px solid #405565}figure{margin:32px 0}a{color:#63dbd0}</style><h1>Jerzy Bass Ambient PRO 0.7</h1><p>Rzeczywiste zrzuty skompilowanego interfejsu JUCE na Windows, wykonane przez test hosta. Zrzuty nie przedstawiają sesji FL Studio.</p>'
+          $html = '<!doctype html><html lang="pl"><meta charset="utf-8"><title>PRO 0.8 — GUI</title><style>body{background:#111923;color:#eee;font:16px sans-serif;max-width:1240px;margin:auto;padding:24px}img{max-width:100%;border:1px solid #405565}figure{margin:32px 0}a{color:#63dbd0}</style><h1>Jerzy Bass Ambient PRO 0.8</h1><p>Rzeczywiste zrzuty skompilowanego interfejsu JUCE na Windows, wykonane przez test hosta. Zrzuty nie przedstawiają sesji FL Studio.</p>'
           foreach ($screen in $screens) { $html += "<figure><figcaption>$($screen.BaseName)</figcaption><a href='$($screen.Name)'><img src='$($screen.Name)'></a></figure>" }
           $html += '</html>'
           $html | Set-Content -Encoding utf8 "$preview/index.html"
-          Compress-Archive -Path "$preview/*" -DestinationPath "$dest/GUI-PRO-0.7-real-screenshots.zip"
-          $bundle = Join-Path $env:RUNNER_TEMP 'Jerzy-Bass-Ambient-PRO-0.7-Windows-x64.zip'
+          Compress-Archive -Path "$preview/*" -DestinationPath "$dest/GUI-PRO-0.8-real-screenshots.zip"
+          $bundle = Join-Path $env:RUNNER_TEMP 'Jerzy-Bass-Ambient-PRO-0.8-Windows-x64.zip'
           Compress-Archive -Path "$dest/*" -DestinationPath $bundle
           Move-Item $bundle $dest
           Get-ChildItem $dest -File | Where-Object { $_.Extension -in '.exe','.zip' } | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content "$dest/SHA256SUMS.txt"
@@ -66,7 +67,7 @@ jobs:
       - name: Save tested binaries to the dedicated delivery branch
         shell: pwsh
         run: |
-          $ref = 'windows/pro-0.7'
+          $ref = 'windows/pro-0.8'
           $remote = git ls-remote origin "refs/heads/$ref"
           if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect delivery branch' }
           if ($remote) {

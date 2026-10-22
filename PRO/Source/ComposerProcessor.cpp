@@ -69,6 +69,7 @@ void BassAmbientProcessor::adoptComposer(bool resetVoices){
     }
 }
 void BassAmbientProcessor::launchComposer(int scene,bool song){
+    liveQueuedScene=scene;
     setParameterValue("performanceSource",3);setParameterValue("modularMidi",0);
     setParameterValue("composerScene",float(scene+1));setParameterValue("composerSongMode",song?1:0);
     for(const char* name:{"bass","pad","arp","drums","krell"})setParameterValue(name,1);
@@ -78,15 +79,19 @@ Parameters BassAmbientProcessor::composerSample(const Parameters& controls,doubl
     if(!activeComposer){auto silent=controls;silent.bass=silent.pad=silent.arp=silent.drums=silent.krell=false;return silent;}
     const bool running=controls.composerPlaying;
     int selected=juce::jlimit(0,std::max(0,int(activeComposer->scenes.size())-1),controls.composerScene-1);
+    sceneTransitionGain=1;
     bool change=!playback||controls.composerSongMode!=wasSongMode;
-    if(!controls.composerSongMode&&selected!=playingScene){
+    if(!controls.composerSongMode&&(selected!=playingScene||liveRetrigger.load())){
         // Quantize a live scene launch to the next bar; initial launch is immediate.
         const double bar=double(num)*4/std::max(1,den);
-        change|=!wasComposerPlaying||std::floor(ppq/bar)!=std::floor(lastComposerPPQ/bar);
+        change|=!wasComposerPlaying||(!controls.composerLoop&&playback&&ppq-composerOrigin>=playback->beats)||std::floor(ppq/bar)!=std::floor(lastComposerPPQ/bar);
+        if(!change&&running){const double remaining=bar-std::fmod(std::max(0.,ppq),bar);sceneTransitionGain=std::min(1.,remaining/std::max(.000001,tempo/60*.004));}
     }
-    if(change){playback=controls.composerSongMode?&activeComposer->song:&activeComposer->scenes[size_t(selected)];playingScene=selected;wasSongMode=controls.composerSongMode;wasComposerPlaying=false;sectionIndex=-1;previousComposerBeat=-1;eventCursor=0;}
+    if(change){liveRetrigger=false;sceneFadeIn=std::max(1,int(sr*.004));playback=controls.composerSongMode?&activeComposer->song:&activeComposer->scenes[size_t(selected)];playingScene=selected;wasSongMode=controls.composerSongMode;wasComposerPlaying=false;sectionIndex=-1;previousComposerBeat=-1;eventCursor=0;}
     if(running&&!wasComposerPlaying){composerOrigin=hostPlaying&&controls.composerSongMode?0:ppq;previousComposerBeat=-1;sectionIndex=-1;eventCursor=0;instrument.allOff();tailUntil.fill(0);previousTracks.fill(false);}
     if(!running&&wasComposerPlaying){instrument.allOff();for(int t=0;t<tracks;++t)tailUntil[size_t(t)]=ppq+tempo/60*std::min(45.0,std::max({sectionPatch.padRelease,sectionPatch.arpRelease,sectionPatch.bassRelease,sectionPatch.krellRelease})+3);}
+    if(running&&!liveRetrigger.load()&&playingScene==liveQueuedScene.load())liveQueuedScene=-1;
+    if(sceneFadeIn>0){sceneTransitionGain*=1.-double(sceneFadeIn)/std::max(1.,sr*.004);--sceneFadeIn;}
     wasComposerPlaying=running;lastComposerPPQ=ppq;
     const auto& timeline=*playback;double beat=ppq-composerOrigin;
     if(controls.composerLoop&&timeline.beats>0)beat=std::fmod(std::max(0.0,beat),timeline.beats);

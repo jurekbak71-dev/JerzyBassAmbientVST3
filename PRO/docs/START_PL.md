@@ -1,4 +1,4 @@
-# Jerzy Bass Ambient PRO 0.7 — szybki start
+# Jerzy Bass Ambient PRO 0.8 — szybki start
 
 ## Gdzie włączyć muzykę
 
@@ -11,7 +11,7 @@ Na górze wybierz źródło sterowania:
 
 W EXE wybierz urządzenie wyjściowe w systemowym panelu Audio/MIDI aplikacji. W **USTAWIENIA** wybierz zegar **INTERNAL** i ustaw BPM na górnym pasku. We FL Studio użyj **HOST / FL STUDIO** oraz transportu FL; pole BPM pokazuje wtedy tempo hosta. **MIDI CLOCK** wymaga przychodzącego zegara. Komunikat o zatrzymanym zegarze pomaga rozpoznać brak transportu.
 
-## Trzy główne widoki
+## Główne widoki
 
 **INSTRUMENTY**: po lewej Bass, Ambient, Arp, Drums i Krell, każdy z własnym POWER i diodami IN/OUT. Po prawej **BRZMIENIE**, **GENERATOR** oraz **EFEKTY**. Parametry rzadziej używane są pod **ZAAWANSOWANE**. Lokalny preset zmienia tylko wybrany instrument. **NOWY WARIANT / COFNIJ** dotyczy ustawień muzycznych wybranego generatora.
 
@@ -76,3 +76,7 @@ Okno dopasowuje się do dostępnego ekranu i można je zmniejszyć do 900×540. 
 Prawoklik regulatora przywraca wartość domyślną, Ctrl+prawoklik obsługuje MIDI Learn. PANIC zatrzymuje generowanie i głosy. PRO nadal ma własną nazwę i identyfikator `pl.jerzy.bassambient.pro` / `Jbpr`; może współistnieć z oryginalną wtyczką bez PRO. Aktualizacja 0.7 zachowuje identyfikator PRO, istniejące identyfikatory parametrów i ich kolejność. Starsze zapisy zachowują dawną ścieżkę MIDI.
 
 Paczka Windows powstaje w MSVC na GitHub; BUILD.txt wskazuje commit, SHA256SUMS.txt sumy plików. Test hosta i renderingu nie zastępuje odsłuchu konkretnego projektu i konfiguracji FL Studio.
+
+## LIVE i nagrywanie koncertu
+
+Otwórz LIVE, wybierz scenę na padzie. WYBIERZ WAV uzbraja nagranie, REC LIVE rozpoczyna zapis, STOP REC finalizuje plik. SNAPSHOT / RETURN pozwala wrócić do brzmienia i miksu bez cofania transportu. [Pełna instrukcja LIVE](LIVE_PL.md).
