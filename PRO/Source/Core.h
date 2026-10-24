@@ -642,7 +642,8 @@ public:
     int arpNoteDisplay() const {return arpeggiator.noteDisplay();}
     std::array<bool,8> activeTracks() const {
         std::array<bool,8> result{};result[7]=krellSynth.active();result[0]=bass.active();for(const auto& v:pads)result[1]|=v.env.active();result[2]=arpeggiator.active();
-        for(int i=0;i<4;++i)result[size_t(i+3)]=drumMachine.active(i);return result;
+        for(int i=0;i<4;++i) result[size_t(i+3)]=drumMachine.active(i);
+        return result;
     }
     void resetMidiPart(int track){int channel=track==0?1:track==1?2:track==2?3:track==7?4:10;for(auto& h:held)if(h.channel==channel)h=Held{};
         if(track==0){bass.reset();root=midiRoot=-1;externalBassId=0;previousSlide=false;gateUntil=-1;}
