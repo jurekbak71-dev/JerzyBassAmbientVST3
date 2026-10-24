@@ -46,6 +46,11 @@ std::vector<ParameterSpec> parameterSpecs() {
 #include "PerformanceParameters.def"
 #undef BOOL
 #undef CHOICE
+    // New IDs MUST be appended after all frozen legacy IDs.
+    out.push_back({"bassBody","BASS Body resonance",0,0,0,1,0,1,{}});
+    out.push_back({"bassAttackTransient","BASS Pick / beater attack",0,0,0,1,0,1,{}});
+    out.push_back({"padBody","AMBIENT Modal body resonance",2,0,0,1,0,1,{}});
+    out.push_back({"padAttackTransient","AMBIENT Strike excitation",2,0,0,1,0,1,{}});
     return out;
 }
 
@@ -118,6 +123,10 @@ jerzy::Parameters BassAmbientProcessor::readParameters() const {
 #include "PerformanceParameters.def"
 #undef BOOL
 #undef CHOICE
+    p.bassBody=values[i++]->load();
+    p.bassAttackTransient=values[i++]->load();
+    p.padBody=values[i++]->load();
+    p.padAttackTransient=values[i++]->load();
     return p;
 }
 
@@ -173,6 +182,8 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
 #undef INT
 #undef CHOICE
 #undef CHOICE_DEN
+    current.bassBody=previous.bassBody;current.bassAttackTransient=previous.bassAttackTransient;
+    current.padBody=previous.padBody;current.padAttackTransient=previous.padAttackTransient;
     current.padRack=previous.padRack;current.masterRack=previous.masterRack;current.arpRack=previous.arpRack;current.drumsRack=previous.drumsRack;current.krellRack=previous.krellRack;
     // Adopt discrete fields immediately, retaining only continuous values for the ramp.
     for(int rack=0;rack<5;++rack) {
@@ -216,6 +227,10 @@ void BassAmbientProcessor::processBlock(juce::AudioBuffer<float>& audio,juce::Mi
 #undef INT
 #undef CHOICE
 #undef CHOICE_DEN
+        current.bassBody+=(target.bassBody-current.bassBody)*smoothing;
+        current.bassAttackTransient+=(target.bassAttackTransient-current.bassAttackTransient)*smoothing;
+        current.padBody+=(target.padBody-current.padBody)*smoothing;
+        current.padAttackTransient+=(target.padAttackTransient-current.padAttackTransient)*smoothing;
         for(int rack=0;rack<5;++rack) {
             auto& c=rack==0?current.padRack:rack==1?current.masterRack:rack==2?current.arpRack:rack==3?current.drumsRack:current.krellRack;
             const auto& t=rack==0?target.padRack:rack==1?target.masterRack:rack==2?target.arpRack:rack==3?target.drumsRack:target.krellRack;
