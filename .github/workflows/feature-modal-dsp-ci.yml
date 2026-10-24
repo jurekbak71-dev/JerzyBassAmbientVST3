@@ -1,0 +1,42 @@
+name: Modal DSP feature Windows QA
+on:
+  push:
+    branches: ['feature/modal-dsp-on-pro-20261024']
+  pull_request:
+    branches: ['pro/composer-arranger']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bass-pro-modal-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core-sanitizers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run DSP regression tests with sanitizers
+        run: |
+          g++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -I PRO/Source PRO/tests/CoreTests.cpp -o /tmp/bass-pro-core
+          /tmp/bass-pro-core
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure PRO
+        run: cmake -S PRO -B build-pro -G "Visual Studio 17 2022" -A x64 -DPRO_ENABLE_LTO=OFF
+      - name: Build VST3, Standalone and tests
+        run: cmake --build build-pro --config Release --parallel 2
+      - name: Run integration and DSP regression tests
+        run: ctest --test-dir build-pro -C Release --output-on-failure
+      - name: Archive test VST3
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'build-pro/JerzyBassAmbientPRO_artefacts/Release/VST3/Jerzy Bass Ambient PRO.vst3' -DestinationPath BassAmbientPRO-ModalDSP-VST3.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BassAmbientPRO-ModalDSP-Windows-VST3
+          path: BassAmbientPRO-ModalDSP-VST3.zip
+          if-no-files-found: error
