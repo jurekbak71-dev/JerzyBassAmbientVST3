@@ -104,6 +104,21 @@ int main() {
         b=a;b.masterRack.order={{5,4,3,2,1,0}};
         check(std::isfinite(compareRacks(a,b)),"three racks granular freeze remain finite");
     }
+    // New resonant body: default is bypass, enabling it changes timbre without NaNs.
+    {
+        ModalExciter body;body.prepare(48000);body.strike(110,1.2,42);
+        double power=0;for(int i=0;i<48000;++i){double y=body.next();check(std::isfinite(y),"resonator finite");power+=y*y;}
+        check(power>.001,"struck modal resonator audible");
+        StrikeTransient hit;hit.prepare(48000);hit.trigger(42);
+        double attack=0;for(int i=0;i<512;++i)attack+=std::abs(hit.next());
+        check(attack>.01,"attack transient audible");
+        Parameters oldP;oldP.direct=true;oldP.bassFX=0;oldP.masterFX=0;
+        Parameters coloured=oldP;coloured.bassBody=.9;coloured.bassAttackTransient=.65;
+        check(compareRacks(oldP,coloured)>.05,"bass resonator changes actual audio");
+        oldP.bass=false;oldP.pad=true;oldP.padAttack=.05;
+        coloured=oldP;coloured.padBody=.85;coloured.padAttackTransient=.5;
+        check(compareRacks(oldP,coloured)>.01,"pad resonator changes actual audio");
+    }
     // CPU sanity benchmark, release build only: report, don't depend on machine speed.
     Instrument s;s.prepare(48000);p=Parameters{};p.pad=true;p.fxGrain=true;s.noteOn(36,1,1,p,0);double ppq=0;
     auto start=std::chrono::steady_clock::now();auto total=energy(s,p,48000,48000,ppq);
