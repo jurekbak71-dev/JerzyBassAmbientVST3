@@ -26,6 +26,8 @@ Pitch bend: +/- 2 półtony. Obsługiwany sustain CC64 i all-notes-off.
 
 ## Brzmienie
 
+- Opcjonalne warstwy BODY RESONANCE i PLUCK / BEATER TRANSIENT w sekcji BASS oraz MODAL BODY i EXCITER / STRIKE w sekcji AMBIENT. Wszystkie mają domyślnie wartość 0, aby starsze projekty zachowały brzmienie.
+- Rezonator składa się z trzech niezależnych, tłumionych modów, wzbudzanych nutą MIDI. Nie używa pamięci dynamicznej w procesie audio.
 - Bas: ACID 303 (inspirowany, nie emulacja obwodu 1:1), SUB 808 strojonym MIDI,
   Classic Analog (2 oscylatory i sub).
 - Oscylatory basu korzystają z PolyBLEP. Głosy i nieliniowy filtr pracują w 2x częstotliwości.
