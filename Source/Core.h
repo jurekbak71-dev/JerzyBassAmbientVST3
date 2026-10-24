@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <limits>
 #include <vector>
+#include "ModalExciter.h"
 
 namespace jerzy {
 constexpr double pi = 3.14159265358979323846;
@@ -33,8 +34,10 @@ struct Parameters : FXParameters {
     double density=.75, movement=.4, gate=.55, swing=0, variation=.15, slide=.3, accent=.5;
     double bassLevel=.6, cutoff=1200, resonance=.35, filterEnv=.65, drive=.2;
     double bassAttack=.003, bassDecay=.25, bassSustain=.25, bassRelease=.1, glide=.09, sub=.3, pulse=.5;
+    double bassBody=0, bassAttackTransient=0;
     double padLevel=.35, padAttack=2, padDecay=3, padSustain=.8, padRelease=5, padCutoff=2600;
     double padBlend=.5, padDrift=.25, motion=.4, evolution=4, spread=.7;
+    double padBody=0, padAttackTransient=0;
     double bassFX=.15, padFX=1, master=.65, masterFX=0;
     bool limiter=true;
     FXParameters padRack, masterRack;
@@ -138,17 +141,20 @@ class BassVoice {
     double rate=48000, pitch=36,target=36, elapsed=0, filterLevel=0, velocity=.8;
     bool connected=false, accented=false;
     Oscillator o1,o2,subOsc; Ladder filter; Envelope env;
+    ModalExciter body; StrikeTransient strike; bool excitePending=false; uint32_t hitCounter=0;
 public:
-    void prepare(double sr) { rate=sr; env.prepare(sr); reset(); }
-    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false; }
+    void prepare(double sr) { rate=sr; env.prepare(sr);body.prepare(sr);strike.prepare(sr);reset(); }
+    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false;body.reset();strike.reset();excitePending=false; }
     void note(int n,double v,bool legato,bool accent) {
         target=clamp(double(n),12.0,108.0);velocity=v;accented=accent;
+        if(!legato||!env.active())excitePending=true;
         if(!legato || !env.active()) { pitch=target;env.on();filterLevel=1;elapsed=0; }
         connected=legato;
     }
     void off() { env.off();connected=false; }
     double next(const Parameters& p,double bend) {
         if(!env.active()) return 0;
+        if(excitePending) {body.strike(hz(target),.10+p.bassDecay*1.5,++hitCounter);strike.trigger(hitCounter);excitePending=false;}
         double amp=env.next(p.bassAttack,p.bassDecay,p.bassSustain,p.bassRelease);
         double glideTime=connected?p.glide:.001;
         pitch+=(target-pitch)*(1-std::exp(-1/(rate*std::max(glideTime,.001))));
@@ -172,16 +178,21 @@ public:
             }
             elapsed+=1/(rate*2);
         }
-        return result*.5*amp*velocity*.7;
+        const double legacy=result*.5*amp*velocity*.7;
+        if(p.bassBody<=0 && p.bassAttackTransient<=0)return legacy;
+        const double modal=p.bassBody>0?body.next():0.0;
+        const double impact=p.bassAttackTransient>0?strike.next():0.0;
+        return legacy+velocity*(modal*p.bassBody*.24*amp+impact*p.bassAttackTransient*.12);
     }
 };
 
 struct PadVoice {
     Oscillator a,b; Ladder fl,fr; Envelope env;
+    ModalExciter body; StrikeTransient strike; bool excitePending=false;
     double note=60, pan=0, age=0, lifetime=4, velocity=1; bool releasing=false;
     uint32_t identity=0;
-    void prepare(double sr) { env.prepare(sr);fl.reset();fr.reset();age=0;releasing=false; }
-    void start(double n,double position,uint32_t id,double v=1) { note=n;pan=position;identity=id;age=0;releasing=false;velocity=v;env.on(); }
+    void prepare(double sr) { env.prepare(sr);fl.reset();fr.reset();body.prepare(sr);strike.prepare(sr);age=0;releasing=false;excitePending=false; }
+    void start(double n,double position,uint32_t id,double v=1) { note=n;pan=position;identity=id;age=0;releasing=false;velocity=v;env.on();excitePending=true; }
     void off() { env.off(); releasing=true; }
     double engine(Oscillator& o,int mode,double f,double sr,double motion,double grain) {
         if(mode==0) return o.next(f,sr,0);
@@ -195,6 +206,7 @@ struct PadVoice {
     }
     Stereo next(const Parameters& p,double sr,double bend) {
         if(!env.active()) return {};
+        if(excitePending) {body.strike(hz(note+bend),.3+p.padRelease*.8,identity);strike.trigger(identity);excitePending=false;}
         double amp=env.next(p.padAttack,p.padDecay,p.padSustain,p.padRelease);
         age+=1/sr;
         double period=std::max(.5,p.evolution), pos=age/period;
@@ -209,6 +221,9 @@ struct PadVoice {
             double mix=x1*(1-p.padBlend)+x2*p.padBlend;
             x+=fl.process(mix,p.padCutoff*std::exp2(modulation*2),.12,sr*2,.12);
         }
+        // Add modal body and a short transient only when explicitly enabled.
+        if(p.padBody>0) x+=body.next()*p.padBody*.50;
+        if(p.padAttackTransient>0) x+=strike.next()*p.padAttackTransient*.18;
         double position=clamp(pan*p.spread+modulation*.12,-1.0,1.0);
         double angle=(position+1)*pi*.25;
         return {x*.5*amp*.19*velocity*std::cos(angle),x*.5*amp*.19*velocity*std::sin(angle)};
@@ -397,7 +412,7 @@ public:
     void prepare(double sr) { rate=sr;bass.prepare(sr);for(auto& v:pads)v.prepare(sr);bassRack.prepare(sr);padRack.prepare(sr);masterRack.prepare(sr);reset(); }
     void reset() {
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
-        for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.age=0; }
+        for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.age=0;v.body.reset();v.strike.reset();v.excitePending=false; }
         bassRack.reset();padRack.reset();masterRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
         anchor=padClock=0;gateUntil=-1;havePosition=wasPlaying=false;voiceSerial=0;dcInL=dcInR=dcOutL=dcOutR=0;
         previousBass=true;previousPad=false;previousDirect=false;
