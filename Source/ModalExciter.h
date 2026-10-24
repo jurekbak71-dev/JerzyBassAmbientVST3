@@ -26,13 +26,12 @@ class ModalExciter {
     std::array<Mode,3> modes{};
     double sr=48000;
     bool pending=false,active=false;
-    double peak=0;
-    uint32_t noiseState=0x8967abcdu;
+    uint64_t tailRemaining=0;
 public:
     void prepare(double sampleRate) noexcept { sr=std::max(8000.0,sampleRate);reset(); }
     void reset() noexcept {
         for(auto& mode:modes)mode.reset();
-        pending=active=false; peak=0;
+        pending=active=false;tailRemaining=0;
     }
     void strike(double fundamental,double seconds,uint32_t identity=0) noexcept {
         // Partial ratios are deliberately inharmonic for richer body resonance.
@@ -41,8 +40,9 @@ public:
         constexpr double weights[3]={.56,.29,.15};
         for(size_t i=0;i<modes.size();++i)
             modes[i].prepare(fundamental*ratios[i],seconds*life[i],sr,weights[i]);
-        noiseState^=identity+0x9e3779b9u;
-        pending=active=true;peak=1;
+        (void)identity;
+        pending=active=true;
+        tailRemaining=static_cast<uint64_t>(std::max(1.0,std::min(12.0,seconds*8.0))*sr);
     }
     double next() noexcept {
         if(!active)return 0;
@@ -51,8 +51,8 @@ public:
         double result=0;
         for(auto& m:modes)result+=m.next(excite);
         // Bounded feedback states are explicitly zeroed when the tail is inaudible.
-        peak*=.999999;
-        if(!std::isfinite(result) || !std::isfinite(peak)) {reset();return 0;}
+        if(tailRemaining>0 && --tailRemaining==0)reset();
+        if(!std::isfinite(result)) {reset();return 0;}
         return std::tanh(result*.6);
     }
 };
