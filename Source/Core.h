@@ -144,7 +144,7 @@ class BassVoice {
     ModalExciter body; StrikeTransient strike; bool excitePending=false; uint32_t hitCounter=0;
 public:
     void prepare(double sr) { rate=sr; env.prepare(sr);body.prepare(sr);strike.prepare(sr);reset(); }
-    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false;body.reset();strike.reset();excitePending=false; }
+    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false;body.reset();strike.reset();excitePending=false;hitCounter=0; }
     void note(int n,double v,bool legato,bool accent) {
         target=clamp(double(n),12.0,108.0);velocity=v;accented=accent;
         if(!legato||!env.active())excitePending=true;
