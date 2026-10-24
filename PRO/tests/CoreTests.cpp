@@ -107,6 +107,21 @@ int main() {
         b=a;b.masterRack.order={{5,4,3,2,1,0}};
         check(std::isfinite(compareRacks(a,b)),"three racks granular freeze remain finite");
     }
+    // Regression: opted-in excitation is audible, deterministic and finite.
+    {
+        ModalExciter resonator;resonator.prepare(48000);resonator.strike(110.0,1.2,42);
+        double power=0;for(int k=0;k<24000;++k){const double y=resonator.next();check(std::isfinite(y),"modal finite");power+=y*y;}
+        check(power>.001,"modal body energy");
+        StrikeTransient transient;transient.prepare(48000);transient.trigger(42);
+        double attack=0;for(int k=0;k<512;++k)attack+=std::abs(transient.next());
+        check(attack>.01,"strike transient audible");
+        Parameters a,b;a.direct=true;a.bassFX=0;b=a;
+        b.bassBody=.9;b.bassAttackTransient=.6;
+        check(compareRacks(a,b)>.05,"bass modal layer changes audio");
+        a=Parameters{};a.bass=false;a.pad=true;a.padAttack=.05;b=a;
+        b.padBody=.8;b.padAttackTransient=.65;
+        check(compareRacks(a,b)>.01,"ambient strike and modal body change audio");
+    }
     // CPU sanity benchmark, release build only: report, don't depend on machine speed.
     Instrument s;s.prepare(48000);p=Parameters{};p.pad=true;p.fxGrain=true;s.noteOn(36,1,1,p,0);double ppq=0;
     auto start=std::chrono::steady_clock::now();auto total=energy(s,p,48000,48000,ppq);
