@@ -7,6 +7,7 @@
 #include <vector>
 #include <atomic>
 #include <memory>
+#include "ModalExciter.h"
 
 namespace jerzy {
 constexpr double pi = 3.14159265358979323846;
@@ -38,8 +39,10 @@ struct Parameters : FXParameters {
     double density=.75, movement=.4, gate=.55, swing=0, variation=.15, slide=.3, accent=.5;
     double bassLevel=.6, cutoff=1200, resonance=.35, filterEnv=.65, drive=.2;
     double bassAttack=.003, bassDecay=.25, bassSustain=.25, bassRelease=.1, glide=.09, sub=.3, pulse=.5;
+    double bassBody=0, bassAttackTransient=0;
     double padLevel=.45, padAttack=2, padDecay=3, padSustain=.8, padRelease=5, padCutoff=2600;
     double padBlend=.5, padDrift=.25, motion=.4, evolution=4, spread=.7;
+    double padBody=0, padAttackTransient=0;
     double bassFX=.15, padFX=1, master=.65, masterFX=0;
     bool limiter=true;
     bool composerEnabled=false,composerPlaying=false,composerSongMode=true,composerLoop=false,separateOutputs=false,midiPlayback=false;
@@ -256,6 +259,7 @@ class BassVoice {
     double rate=48000, pitch=36,target=36, elapsed=0, filterLevel=0, velocity=.8;
     bool connected=false, accented=false;
     Oscillator o1,o2,subOsc; Ladder filter; Envelope env;
+    ModalExciter body; StrikeTransient strike; bool excitePending=false;uint32_t hitCounter=0;
     std::vector<double> string;size_t stringCursor=0;uint32_t plucks=0;bool pluckPending=true;double stringPrevious=0,guitarBody=0;
     double guitar(const Parameters& p,double frequency){
         const double damping=.5*(1-p.guitarTone*.8);
@@ -279,21 +283,28 @@ class BassVoice {
 public:
     bool active() const {return env.active();}
 
-    void prepare(double sr) { rate=sr;string.assign(size_t(std::ceil(sr/hz(12)))+8,0);env.prepare(sr);reset(); }
-    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false;pluckPending=true;stringCursor=0;stringPrevious=guitarBody=0;plucks=0; }
+    void prepare(double sr) { rate=sr;string.assign(size_t(std::ceil(sr/hz(12)))+8,0);env.prepare(sr);body.prepare(sr);strike.prepare(sr);reset(); }
+    void reset() { env.reset(); filter.reset(); o1={};o2={};subOsc={};elapsed=filterLevel=0;connected=false;pluckPending=true;stringCursor=0;stringPrevious=guitarBody=0;plucks=0;body.reset();strike.reset();excitePending=false;hitCounter=0; }
     void note(int n,double v,bool legato,bool accent) {
         target=clamp(double(n),12.0,108.0);velocity=v;accented=accent;
-        if(!legato || !env.active()) { pitch=target;env.on();filterLevel=1;elapsed=0;pluckPending=true; }
+        if(!legato || !env.active()) { pitch=target;env.on();filterLevel=1;elapsed=0;pluckPending=true;excitePending=true; }
         connected=legato;
     }
     void off() { env.off();connected=false; }
     double next(const Parameters& p,double bend) {
         if(!env.active()) return 0;
+        if(excitePending) {body.strike(hz(target),.10+p.bassDecay*1.5,++hitCounter);strike.trigger(hitCounter);excitePending=false;}
         double amp=env.next(p.bassAttack,p.bassDecay,p.bassSustain,p.bassRelease);
         double glideTime=connected?p.glide:.001;
         pitch+=(target-pitch)*(1-std::exp(-1/(rate*std::max(glideTime,.001))));
         filterLevel*=std::exp(-1/(rate*std::max(.025,p.bassDecay*(accented?1.4:1))));
-        if(p.model==3)return guitar(p,hz(pitch+bend))*amp*velocity*.9;
+        if(p.model==3) {
+            const double legacy=guitar(p,hz(pitch+bend))*amp*velocity*.9;
+            if(p.bassBody<=0&&p.bassAttackTransient<=0)return legacy;
+            const double resonant=p.bassBody>0?body.next():0.0;
+            const double transient=p.bassAttackTransient>0?strike.next():0.0;
+            return legacy+velocity*(resonant*p.bassBody*.24*amp+transient*p.bassAttackTransient*.12);
+        }
         double result=0;
         for(int i=0;i<2;++i) {
             const double f=hz(pitch+bend);
@@ -313,16 +324,21 @@ public:
             }
             elapsed+=1/(rate*2);
         }
-        return result*.5*amp*velocity*.7;
+        const double legacy=result*.5*amp*velocity*.7;
+        if(p.bassBody<=0&&p.bassAttackTransient<=0)return legacy;
+        const double resonant=p.bassBody>0?body.next():0.0;
+        const double transient=p.bassAttackTransient>0?strike.next():0.0;
+        return legacy+velocity*(resonant*p.bassBody*.24*amp+transient*p.bassAttackTransient*.12);
     }
 };
 
 struct PadVoice {
     Oscillator a,b,c,d,shimmer; Ladder fl,fr; Envelope env;
+    ModalExciter body; StrikeTransient strike; bool excitePending=false;
     double note=60, pan=0, age=0, lifetime=4, velocity=1, wait=0, attackScale=1, decayScale=1, releaseScale=1, motionRate=1; bool releasing=false;
     uint32_t identity=0,eventId=0;
-    void prepare(double sr) { env.prepare(sr);fl.reset();fr.reset();age=0;releasing=false; }
-    void start(double n,double position,uint32_t id,double v=1) { note=n;pan=position;identity=id;age=0;releasing=false;velocity=v;wait=0;attackScale=decayScale=releaseScale=motionRate=1;env.on(); }
+    void prepare(double sr) { env.prepare(sr);fl.reset();fr.reset();body.prepare(sr);strike.prepare(sr);age=0;releasing=false;excitePending=false; }
+    void start(double n,double position,uint32_t id,double v=1) { note=n;pan=position;identity=id;age=0;releasing=false;velocity=v;wait=0;attackScale=decayScale=releaseScale=motionRate=1;env.on();excitePending=true; }
     void off() { env.off(); releasing=true; }
     double engine(Oscillator& o,int mode,double f,double sr,double motion,double grain) {
         if(mode==0) return o.next(f,sr,0);
@@ -337,6 +353,7 @@ struct PadVoice {
     Stereo next(const Parameters& p,double sr,double bend) {
         if(!env.active()) return {};
         if(age<wait) {age+=1/sr;return {};}
+        if(excitePending) {body.strike(hz(note+bend),.3+p.padRelease*.8,identity);strike.trigger(identity);excitePending=false;}
         double amp=env.next(p.padAttack*attackScale,p.padDecay*decayScale,p.padSustain,p.padRelease*releaseScale);
         age+=1/sr;
         double period=std::max(.5,p.evolution), pos=age*motionRate/period;
@@ -357,6 +374,9 @@ struct PadVoice {
             right=fr.process(right,p.padCutoff*std::exp2(-modulation*1.6),p.padResonance,sr*2,.12);
             stereoRight+=right;
         }
+        const double modal=p.padBody>0?body.next()*p.padBody*.50:0.0;
+        const double transient=p.padAttackTransient>0?strike.next()*p.padAttackTransient*.18:0.0;
+        x+=modal+transient;stereoRight+=modal*.87+transient*.95;
         double position=clamp(pan*p.spread+modulation*.12,-1.0,1.0);
         double angle=(position+1)*pi*.25;
         return {x*.5*amp*.38*velocity*std::cos(angle),stereoRight*.5*amp*.38*velocity*std::sin(angle)};
@@ -582,7 +602,7 @@ public:
     void reset() {
         arpeggiator.reset();drumMachine.reset();krellSynth.reset();arpNoteCount=0;midiRoot=-1;padMidiRoot=arpMidiRoot=krellMidiRoot=previousPadRoot=-1;
         held={};sustain.fill(false);bend.fill(0);serial=0;root=-1;rootChannel=1;bass.reset();
-        for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.c={};v.d={};v.shimmer={};v.age=0; }
+        for(auto& v:pads) { v.env.reset();v.fl.reset();v.fr.reset();v.a={};v.b={};v.c={};v.d={};v.shimmer={};v.age=0;v.body.reset();v.strike.reset();v.excitePending=false; }
         bassRack.reset();padRack.reset();masterRack.reset();arpRack.reset();krellRack.reset();for(auto& rack:drumRacks)rack.reset();delaySendRack.reset();reverbSendRack.reset();lastStep=std::numeric_limits<int64_t>::min();previousSlide=false;
         anchor=padClock=0;gateUntil=-1;havePosition=wasPlaying=false;voiceSerial=0;dcInL=dcInR=dcOutL=dcOutR=0;
         previousBass=true;previousPad=false;previousDirect=false;
@@ -622,7 +642,8 @@ public:
     int arpNoteDisplay() const {return arpeggiator.noteDisplay();}
     std::array<bool,8> activeTracks() const {
         std::array<bool,8> result{};result[7]=krellSynth.active();result[0]=bass.active();for(const auto& v:pads)result[1]|=v.env.active();result[2]=arpeggiator.active();
-        for(int i=0;i<4;++i)result[size_t(i+3)]=drumMachine.active(i);return result;
+        for(int i=0;i<4;++i) result[size_t(i+3)]=drumMachine.active(i);
+        return result;
     }
     void resetMidiPart(int track){int channel=track==0?1:track==1?2:track==2?3:track==7?4:10;for(auto& h:held)if(h.channel==channel)h=Held{};
         if(track==0){bass.reset();root=midiRoot=-1;externalBassId=0;previousSlide=false;gateUntil=-1;}

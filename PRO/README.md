@@ -25,3 +25,9 @@ Testy obejmują DSP, generatory, stan hosta, migrację, MIDI, aranżer, WAV, po�
 ## LIVE 0.8
 
 Nowy widok **LIVE**: pady scen, wskazanie kolejki, osiem faderów i mute, Snapshot/Return oraz nagrywanie rzeczywistego stereo MAIN do WAV. Sterowanie scenami i akcjami przez CC35–49. [Instrukcja LIVE i nagrywania](docs/LIVE_PL.md).
+
+## Opcjonalna synteza modalna (rozwój DSP, październik 2026)
+
+Na stronach BASS i AMBIENT są cztery nowe parametry: **BASS Body resonance**, **BASS Pick / beater attack**, **AMBIENT Modal body resonance** i **AMBIENT Strike excitation**. Wszystkie domyślnie wynoszą zero, więc zachowują dawne brzmienia i presety. Wykorzystują autorskie, stałopamięciowe tłumione rezonatory oraz krótki sygnał wzbudzenia, działające zarówno w modelach analogowych, jak i Bass Guitar oraz padach. Parametry są automatyzowalne, wygładzane i zachowują ustawienia w stanie hosta.
+
+Nowe identyfikatory są dołączone **na końcu** istniejącej listy parametrów PRO, bez przesunięć starych indeksów hosta. Nie zmieniają sekcji MIDI, JAM, Composer, racków FX ani dotychczasowej kolejności parametrów. DSP to niezależna implementacja Jerzy Audio, nie kopia AGPL Drum Foundry.

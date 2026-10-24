@@ -1,9 +1,50 @@
 #pragma once
 #include "LegacyParameterOrder.h"
 inline void checkGuiV2Routing() {
-    const auto specs=parameterSpecs();require(specs.size()==size_t(legacyParameterIds.size()+7),"exactly seven appended performance parameters");for(int index=0;index<legacyParameterIds.size();++index)require(specs[size_t(index)].id==legacyParameterIds[index],"every 0.6 host parameter index remains stable");
+    const auto specs=parameterSpecs();
+    // All frozen PRO 0.6 host indices remain unchanged. Seven MIDI parameters
+    // are followed by four new, opt-in modal DSP parameters (no inserted IDs).
+    const char* const appended[]{
+        "modularMidi", "bassMidiMode", "padMidiMode", "arpMidiMode",
+        "krellMidiMode", "drumsMidiMode", "performanceSource",
+        "bassBody", "bassAttackTransient", "padBody", "padAttackTransient"
+    };
+    constexpr size_t added=sizeof(appended)/sizeof(appended[0]);
+    require(specs.size()==size_t(legacyParameterIds.size())+added,
+            "host parameter count matches legacy + MIDI routing + modal DSP additions");
+    for(int index=0;index<legacyParameterIds.size();++index)
+        require(specs[size_t(index)].id==legacyParameterIds[index],
+                "every PRO 0.6 host parameter index remains stable");
+    for(size_t index=0;index<added;++index)
+        require(specs[size_t(legacyParameterIds.size())+index].id==appended[index],
+                "appended MIDI and modal DSP parameter IDs are in stable order");
+    for(size_t index=added-4;index<added;++index)
+        require(specs[size_t(legacyParameterIds.size())+index].initial==0.0,
+                "optional modal DSP defaults bypass the new synthesis");
+
     BassAmbientProcessor p;Host host;host.bpm=240;p.setPlayHead(&host);
     auto set=[&](const char* id,float value){p.setParameterValue(id,value);};
+    // Host automation, APVTS project save and reload preserve all four mixes.
+    const char* const modalIds[]{"bassBody","bassAttackTransient","padBody","padAttackTransient"};
+    const float modalValues[]{.21f,.43f,.65f,.87f};
+    for(int i=0;i<4;++i) set(modalIds[i],modalValues[i]);
+    auto before=p.readParameters();
+    require(std::abs(before.bassBody-modalValues[0])<1e-5 &&
+            std::abs(before.bassAttackTransient-modalValues[1])<1e-5 &&
+            std::abs(before.padBody-modalValues[2])<1e-5 &&
+            std::abs(before.padAttackTransient-modalValues[3])<1e-5,
+            "four modal DSP host parameters reach DSP engine");
+    juce::MemoryBlock modalState;p.getStateInformation(modalState);
+    for(const auto id:modalIds) set(id,0);
+    p.setStateInformation(modalState.getData(),int(modalState.getSize()));
+    const auto recalled=p.readParameters();
+    require(std::abs(recalled.bassBody-modalValues[0])<1e-5 &&
+            std::abs(recalled.bassAttackTransient-modalValues[1])<1e-5 &&
+            std::abs(recalled.padBody-modalValues[2])<1e-5 &&
+            std::abs(recalled.padAttackTransient-modalValues[3])<1e-5,
+            "four modal DSP settings survive host project reload");
+    for(const auto id:modalIds) set(id,0);
+
     auto layout=p.getBusesLayout();for(auto& bus:layout.outputBuses)bus=juce::AudioChannelSet::stereo();require(p.setBusesLayout(layout),"new MIDI routing stem layout");
     for(const auto& item:std::initializer_list<std::pair<const char*,float>>{{"modularMidi",1},{"performanceSource",1},{"composerEnabled",0},{"midiPlayback",0},{"autoPlay",0},{"clockSource",1},{"harmonyLink",0},{"bass",1},{"pad",1},{"arp",1},{"drums",1},{"krell",1},{"fxEnabled",0},{"padAttack",.05f},{"padRelease",.05f},{"arpRelease",.05f},{"bassMidiMode",1},{"padMidiMode",0},{"arpMidiMode",1},{"krellMidiMode",1},{"drumsMidiMode",0}})set(item.first,item.second);
     p.prepareToPlay(48000,128);juce::AudioBuffer<float> audio(22,128);juce::MidiBuffer midi;
@@ -21,7 +62,16 @@ inline void checkGuiV2Routing() {
     set("performanceSource",2);render(1);require(!p.readParameters().modularMidi&&!p.readParameters().composerEnabled&&!p.readParameters().autoPlay,"host source automation selects JAM without starting music");set("harmonyRoot",48);set("autoRoot",36);set("harmonyLink",0);set("autoPlay",1);render(1);require(p.rootDisplay==48,"JAM global root works independently of generator LINK preference");set("autoPlay",0);set("performanceSource",3);render(1);require(p.readParameters().composerEnabled&&!p.readParameters().modularMidi,"host source automation selects Arranger routing");set("performanceSource",1);render(1);require(p.readParameters().modularMidi&&!p.readParameters().composerEnabled,"host source automation returns to independent MIDI");
     p.releaseResources();
     // An authentic 0.6 host state must remain on its old routing path after update.
-    auto old=p.state.copyState();const char* added[]{"modularMidi","performanceSource","bassMidiMode","padMidiMode","arpMidiMode","krellMidiMode","drumsMidiMode"};for(auto id:added){auto child=old.getChildWithProperty("id",id);if(child.isValid())old.removeChild(child,nullptr);}
+    auto old=p.state.copyState();
+    const char* const postLegacyIds[]{
+        "modularMidi","performanceSource","bassMidiMode","padMidiMode",
+        "arpMidiMode","krellMidiMode","drumsMidiMode",
+        "bassBody","bassAttackTransient","padBody","padAttackTransient"
+    };
+    for(auto id:postLegacyIds) {
+        auto child=old.getChildWithProperty("id",id);
+        if(child.isValid())old.removeChild(child,nullptr);
+    }
     old.getChildWithProperty("id","direct").setProperty("value",1,nullptr);old.getChildWithProperty("id","midiPlayback").setProperty("value",1,nullptr);
     juce::MemoryBlock state;auto xml=old.createXml();juce::AudioProcessor::copyXmlToBinary(*xml,state);p.setStateInformation(state.getData(),int(state.getSize()));auto restored=p.readParameters();require(!restored.modularMidi&&restored.performanceSource==0&&restored.midiPlayback&&restored.bassMidiMode==0&&restored.padMidiMode==0,"0.6 state migration preserves literal imported MIDI routing");
 }
